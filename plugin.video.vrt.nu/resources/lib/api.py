@@ -5,9 +5,9 @@
 from __future__ import absolute_import, division, unicode_literals
 
 try:  # Python 3
-    from urllib.parse import quote_plus
+    from urllib.parse import quote_plus, unquote
 except ImportError:  # Python 2
-    from urllib import quote_plus
+    from urllib import quote_plus, unquote
 
 from data import CHANNELS
 from helperobjects import TitleItem
@@ -39,7 +39,7 @@ def get_sort(program_type):
     return sort, ascending
 
 
-def get_context_menu(program_name, program_id, program_title, program_type, is_favorite, is_continue=False, episode_id=None):
+def get_context_menu(program_name, program_id, program_title, program_type, favorited, is_continue=False, episode_id=None):
     """Get context menu for listitem"""
     from addon import plugin
     plugin_path = plugin.path
@@ -48,7 +48,7 @@ def get_context_menu(program_name, program_id, program_title, program_type, is_f
     # Follow/unfollow
     follow_suffix = localize(30410) if program_type != 'oneoff' else ''  # program
     encoded_program_title = to_unicode(quote_plus(from_unicode(program_title)))  # We need to ensure forward slashes are quoted
-    if is_favorite:
+    if favorited:
         context_menu.append((
             localize(30412, title=follow_suffix),  # Unfollow
             'RunPlugin(%s)' % url_for('unfollow', program_id=program_id, program_title=encoded_program_title)
@@ -81,7 +81,7 @@ def get_context_menu(program_name, program_id, program_title, program_type, is_f
     return context_menu
 
 
-def format_label(program_title, episode_title, program_type, ontime=None, is_favorite=False, item_type='episode'):
+def format_label(program_title, episode_title, program_type, ontime=None, favorited=False, item_type='episode'):
     """Format label"""
     if item_type == 'program' or program_type == 'oneoff':
         label = program_title
@@ -93,7 +93,7 @@ def format_label(program_title, episode_title, program_type, ontime=None, is_fav
         label = episode_title
 
     # Favorite marker
-    if is_favorite:
+    if favorited:
         label += colour('[COLOR={highlighted}]ᵛ[/COLOR]')
 
     return label
@@ -345,6 +345,7 @@ def get_single_episode_data(episode_id):
 
 def get_latest_episode_data(program_name):
     """Get latest episode data from GraphQL API"""
+    latest_episode = {}
     graphql_query = """
         query VideoProgramPage($pageId: ID!, $lazyItemCount: Int = 500, $after: ID) {
           page(id: $pageId) {
@@ -430,7 +431,26 @@ def get_latest_episode_data(program_name):
     variables = {
         'pageId': '/vrtnu/a-z/{}.model.json'.format(program_name),
     }
-    return api_req(graphql_query, operation_name, variables, client='MobileAndroid')
+    api_data = api_req(graphql_query, operation_name, variables, client='MobileAndroid')
+    page = api_data.get('data').get('page')
+    if page:
+        most_relevant_ep = page.get('components')[0].get('mostRelevantEpisodeTile')
+        if most_relevant_ep and most_relevant_ep.get('title') == 'Meest recente aflevering':
+            latest_episode = most_relevant_ep
+        else:
+            items = page.get('components')[0].get('items')[0].get('components')[0]
+            if not items.get('paginatedItems'):
+                items = items.get('items')[0].get('components')[0]
+            edges = items.get('paginatedItems').get('edges')
+            highest_ep_no = 0
+            highest_ep = {}
+            for edge in edges:
+                ep_no = int(edge.get('node').get('episode').get('episodeNumberRaw'))
+                if ep_no > highest_ep_no:
+                    highest_ep_no = ep_no
+                    highest_ep = edge
+            latest_episode = highest_ep
+    return latest_episode
 
 
 def get_seasons_data(program_name):
@@ -561,10 +581,10 @@ def get_seasons_data(program_name):
     return api_req(graphql_query, operation_name, variables)
 
 
-def set_favorite(program_id, program_title, is_favorite=True):
+def set_favorite(program_id, program_title, favorited=True):
     """Set favorite(add/remove to/from my list)"""
     graphql_query = """
-        mutation setFavorite($input: FavoriteActionInput!) {
+        mutation setFavoriteActionItem($input: FavoriteActionInput!) {
           setFavoriteActionItem(input: $input) {
             __typename
             objectId
@@ -583,15 +603,27 @@ def set_favorite(program_id, program_title, is_favorite=True):
           }
         }
     """
-    operation_name = 'setFavorite'
+    operation_name = 'setFavoriteActionItem'
     variables = {
         'input': {
-            'favorite': is_favorite,
-            'id': '{}:video:item'.format(program_id),
+            'favorite': favorited,
+            'id': program_id,
             'title': program_title,
         },
     }
     return api_req(graphql_query, operation_name, variables)
+
+
+def is_favorite(program_name):
+    """Wether a program a favorited"""
+    favorite = get_latest_episode_data(program_name).get('node').get('episode').get('favoriteAction').get('favorite')
+    return favorite
+
+
+def get_program_id(program_name):
+    """Get the id of a program"""
+    program_id = get_latest_episode_data(program_name).get('node').get('episode').get('program').get('id')
+    return program_id
 
 
 def set_resumepoint(video_id, title, position, total):
@@ -849,17 +881,17 @@ def convert_programs(api_data, destination, use_favorites=False, **kwargs):
                 thumb = reformat_image_url(thumb_img.get('templateUrl'))
 
             # Check favorite
-            is_favorite = program.get('program').get('favoriteAction').get('favorite')
+            favorited = program.get('program').get('favoriteAction').get('favorite')
 
             # Filter favorites for favorites menu
-            if use_favorites and is_favorite is False:
+            if use_favorites and favorited is False:
                 continue
 
             # Context menu
-            context_menu = get_context_menu(program_name, program_id, program_title, program_type, is_favorite)
+            context_menu = get_context_menu(program_name, program_id, program_title, program_type, favorited)
 
             # Label
-            label = format_label(program_title, episode_title, program_type, ontime, is_favorite, item_type='program')
+            label = format_label(program_title, episode_title, program_type, ontime, favorited, item_type='program')
 
             programs.append(
                 TitleItem(
@@ -961,7 +993,7 @@ def convert_episode(item, destination=None):
         thumb = reformat_image_url(thumb_img.get('templateUrl'))
 
     # Check favorite
-    is_favorite = episode.get('favoriteAction').get('favorite')
+    favorited = episode.get('favoriteAction').get('favorite')
 
     # Check continue
     is_continue = False
@@ -970,10 +1002,10 @@ def convert_episode(item, destination=None):
 
     # Context menu
     context_menu = get_context_menu(program_name, program_id, program_title, program_type,
-                                    is_favorite, is_continue, episode_id)
+                                    favorited, is_continue, episode_id)
 
     # Label
-    label = format_label(program_title, episode_title, program_type, ontime, is_favorite)
+    label = format_label(program_title, episode_title, program_type, ontime, favorited)
 
     # Sorting
     sort, ascending = get_sort(program_type)
@@ -993,7 +1025,7 @@ def convert_episode(item, destination=None):
             if position > total - RESUMEPOINTS_MARGIN:
                 playcount = 1
 
-    return sort, ascending, is_favorite, TitleItem(
+    return sort, ascending, favorited, TitleItem(
         label=label,
         path=path,
         art_dict={
@@ -1036,10 +1068,10 @@ def convert_episodes(api_data, destination, use_favorites=False, **kwargs):
     if item_list:
         for item in item_list.get('paginated').get('edges'):
 
-            sort, ascending, is_favorite, title_item = convert_episode(item, destination)
+            sort, ascending, favorited, title_item = convert_episode(item, destination)
 
             # Filter favorites for favorites menu
-            if use_favorites and is_favorite is False:
+            if use_favorites and favorited is False:
                 continue
 
             episodes.append(title_item)
@@ -1077,26 +1109,8 @@ def get_latest_episode(program_name):
     """Get the latest episode of a program"""
     latest_episode = {}
     video = None
-    api_data = get_latest_episode_data(program_name=program_name)
-    page = api_data.get('data').get('page')
-    if page:
-        most_relevant_ep = page.get('components')[0].get('mostRelevantEpisodeTile')
-        if most_relevant_ep and most_relevant_ep.get('title') == 'Meest recente aflevering':
-            latest_episode = most_relevant_ep
-        else:
-            items = page.get('components')[0].get('items')[0].get('components')[0]
-            if not items.get('paginatedItems'):
-                items = items.get('items')[0].get('components')[0]
-            edges = items.get('paginatedItems').get('edges')
-            highest_ep_no = 0
-            highest_ep = {}
-            for edge in edges:
-                ep_no = int(edge.get('node').get('episode').get('episodeNumberRaw'))
-                if ep_no > highest_ep_no:
-                    highest_ep_no = ep_no
-                    highest_ep = edge
-            latest_episode = highest_ep
-
+    latest_episode = get_latest_episode_data(program_name=program_name)
+    if latest_episode:
         _, _, _, title_item = convert_episode(latest_episode)
         video = {
             'listitem': title_item,
@@ -1529,178 +1543,128 @@ def get_online_categories():
     """Return a list of categories from the VRT MAX website"""
     categories = []
     graphql_query = """
-        query Search(
-          $q: String
-          $mediaType: MediaType
-          $facets: [SearchFacetInput]
+        query Page(
+          $pageId: ID!
+          $lazyItemCount: Int = 10
+          $after: ID
+          $before: ID
+          $componentCount: Int = 5
+          $componentAfter: ID
         ) {
-          uiSearch(input: { q: $q, mediaType: $mediaType, facets: $facets }) {
-            __typename
+          page(id: $pageId) {
             ... on IIdentifiable {
+              __typename
               objectId
-              __typename
             }
-            ... on IComponent {
-              componentType
-              __typename
-            }
-            ...staticTileListFragment
-          }
-        }
-        fragment staticTileListFragment on StaticTileList {
-          __typename
-          id: objectId
-          objectId
-          listId
-          title
-          componentType
-          tileContentType
-          tileOrientation
-          displayType
-          expires
-          tileVariant
-          sort {
-            icon
-            order
-            title
-            __typename
-          }
-          actionItems {
-            ...actionItem
-            __typename
-          }
-          header {
-            action {
-              ...action
-              __typename
-            }
-            brand
-            brandLogos {
-              height
-              mono
-              primary
-              type
-              width
-              __typename
-            }
-            ctaText
-            description
-            image {
-              ...imageFragment
-              __typename
-            }
-            type
-            compactLayout
-            backgroundColor
-            textTheme
-            __typename
-          }
-          bannerSize
-          items {
-            ...tileFragment
-            __typename
-          }
-          ... on IComponent {
-            __typename
-          }
-        }
-        fragment tileFragment on Tile {
-          ... on IIdentifiable {
-            __typename
-            objectId
-          }
-          ... on IComponent {
-            title
-            componentType
-            __typename
-          }
-          ... on ITile {
-            title
-            action {
-              ...action
-              __typename
-            }
-            image {
-              ...imageFragment
+            ... on IPage {
+              paginatedComponents(first: $componentCount, after: $componentAfter) {
+                __typename
+                edges {
+                  __typename
+                  node {
+                    ... on PaginatedTileList {
+                      __typename
+                      objectId
+                      listId
+                      displayType
+                      paginatedItems(first: $lazyItemCount, after: $after, before: $before) {
+                        __typename
+                        edges {
+                          __typename
+                          cursor
+                          node {
+                            __typename
+                          }
+                        }
+                        pageInfo {
+                          __typename
+                          endCursor
+                          hasNextPage
+                          hasPreviousPage
+                          startCursor
+                        }
+                      }
+                      tileContentType
+                      title
+                      description
+                      __typename
+                    }
+                    ... on StaticTileList {
+                      __typename
+                      objectId
+                      listId
+                      title
+                      tileContentType
+                      displayType
+                      items {
+                        ... on ButtonTile {
+                          mode
+                          title
+                          id
+                          objectId
+                          action {
+                            ... on LinkAction {
+                              linkId
+                              link
+                              internalTarget
+                              externalTarget
+                              __typename
+                            }
+                          }
+                          tileType
+                          image {
+                            templateUrl
+                          }
+                          __typename
+                        }
+                        __typename
+                      }
+                      __typename
+                    }
+                    __typename
+                  }
+                  __typename
+                }
+                __typename
+              }
               __typename
             }
             __typename
           }
-          ... on BannerTile {
-            id
-            backgroundColor
-            textTheme
-            active
-            description
-            __typename
-          }
-        }
-        fragment actionItem on ActionItem {
-          __typename
-          id: objectId
-          accessibilityLabel
-          action {
-            ...action
-            __typename
-          }
-          active
-          analytics {
-            __typename
-            eventId
-            interaction
-            interactionDetail
-            pageProgrambrand
-          }
-          icon
-          iconPosition
-          mode
-          objectId
-          title
-        }
-        fragment action on Action {
-          __typename
-          ... on SearchAction {
-            facets {
-              name
-              values
-              __typename
-            }
-            mediaType
-            navigationType
-            q
-            __typename
-          }
-        }
-        fragment imageFragment on Image {
-          id: objectId
-          alt
-          title
-          focalPoint
-          objectId
-          templateUrl
         }
     """
-    operation_name = 'Search'
+    operation_name = 'Page'
     variables = {
-        'facets': [],
-        'mediaType': 'watch',
-        'q': '',
+        'pageId': '/vrtmax/zoeken/',
     }
-    categories_json = api_req(graphql_query, operation_name, variables, client='MobileAndroid')
+    categories_json = api_req(graphql_query, operation_name, variables)
     if categories_json is not None:
-        content_types = find_entry(categories_json.get('data').get('uiSearch'), 'listId', 'initialsearchcontenttypes').get('items')
-        genres = find_entry(categories_json.get('data').get('uiSearch'), 'listId', 'initialsearchgenres').get('items')
+        from json import loads
+        edges = categories_json.get('data', {}).get('page', {}).get('paginatedComponents', {}).get('edges', [])
+        content_types = next(
+            (
+                item.get('node')
+                for item in edges
+                if item.get('node', {}).get('listId') == 'initialsearchcontenttypes'
+            ),
+            {}
+        ).get('items', [])
+        genres = next(
+            (
+                item.get('node')
+                for item in edges
+                if item.get('node', {}).get('listId') == 'initialsearchgenres'
+            ),
+            {}
+        ).get('items', [])
         category_items = content_types + genres
         for category in category_items:
             # Don't add audio-only categories
             if category.get('title') in ('Podcasts', 'Radio'):
                 continue
-            thumb = category.get('image')
-            if thumb:
-                thumb = thumb.get('templateUrl')
+            category_id = loads(unquote(category.get('action').get('link')).split('?facets=')[1])[0].get('values')[0]
             categories.append({
-                'id': category.get('action').get('facets')[0].get('values')[0],
-                'thumbnail': thumb,
+                'id': category_id,
                 'name': category.get('title'),
             })
         categories.sort(key=lambda x: x.get('name'))
