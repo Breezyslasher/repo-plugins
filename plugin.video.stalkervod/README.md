@@ -6,3 +6,6 @@ v1.0.0  (2024-07-13)
 If using kodi Add to Favourites option, existing Favourites link would break.
 Ability to use Portal Favorite option for both VOD and TV Channels
 Add support for UpNext addon.
+
+v1.1.0  (2025-07-26)
+- Add search to directory listing for TV and VOD
