@@ -9,3 +9,6 @@ Add support for UpNext addon.
 
 v1.1.0  (2025-07-26)
 - Add search to directory listing for TV and VOD
+
+v1.2.0  (2025-08-06)
+- Fix TV stream issue for portal with use_http_tmp_link and use_load_balancing as false
