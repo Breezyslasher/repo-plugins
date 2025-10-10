@@ -2,19 +2,21 @@
 # GNU General Public License v3.0 (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 """Implements VRT MAX GraphQL API functionality"""
 
-from urllib.parse import quote_plus, unquote
+from urllib.parse import quote, quote_plus, unquote
 
 from data import CHANNELS
 from helperobjects import TitleItem
 from kodiutils import (colour, delete_cached_thumbnail, get_cache, get_setting_bool, get_setting_int, get_url_json, has_addon, has_credentials,
-                       localize, localize_from_data, log, update_cache, url_for)
-from utils import find_entry, reformat_image_url, shorten_link, url_to_program, youtube_to_plugin_url
+                       localize, localize_datelong, localize_from_data, log, update_cache, url_for)
+from utils import find_entry, parse_duration, reformat_image_url, shorten_link, url_to_program, youtube_to_plugin_url
 from graphql_data import EPISODE_TILE
+
 
 SCREENSHOT_URL = 'https://www.vrt.be/vrtnu-static/screenshots'
 GRAPHQL_URL = 'https://www.vrt.be/vrtnu-api/graphql/v1'
 RESUMEPOINTS_URL = 'https://ddt.profiel.vrt.be/resumePoints'
 RESUMEPOINTS_MARGIN = 30  # The margin at start/end to consider a video as watched
+LIVESTREAM_CACHE_HOURS = 24
 
 
 def get_sort(program_type):
@@ -76,31 +78,58 @@ def get_context_menu(program_name, program_id, program_title, program_type, favo
     return context_menu
 
 
-def format_label(program_title, episode_title, program_type, ontime=None, favorited=False, item_type='episode'):
+def format_label(program_title, episode_title, program_type, start_dt=None, favorited=False, item_type='episode', is_playable=True, is_live=False):
     """Format label"""
+    import dateutil.tz
     if item_type == 'program' or program_type == 'oneoff':
         label = program_title
     elif program_type == 'mixed_episodes':
         label = '[B]{}[/B] - {}'.format(program_title, episode_title)
     elif program_type == 'daily':
-        label = '{} - {}'.format(ontime.strftime('%d/%m'), episode_title)
+        label = '{} - {}'.format(start_dt.astimezone(dateutil.tz.gettz('Europe/Brussels')).strftime('%d/%m'), episode_title)
+    elif program_type == 'epg':
+        parts = [
+            start_dt.astimezone(dateutil.tz.gettz('Europe/Brussels')).strftime("%H:%M"),
+            '[B]{}[/B]'.format(program_title) if program_title else None,
+            episode_title
+        ]
+        label = ' - '.join(p for p in parts if p)
     else:
         label = episode_title
 
     # Favorite marker
     if favorited:
-        label += colour('[COLOR={highlighted}]ᵛ[/COLOR]')
+        label += '[COLOR={highlighted}]ᵛ[/COLOR]'
 
-    return label
+    # Non-actionable item
+    if item_type == 'episode' and not is_playable:
+        label = '[COLOR={{greyedout}}]{}[/COLOR]'.format(label)
+
+    # Now playing
+    if is_live:
+        if item_type == 'episode' and is_playable:
+            label = '[COLOR={{highlighted}}]{}[/COLOR] {}'.format(label, localize(30301))
+        else:
+            label += localize(30301)
+
+    return colour(label)
 
 
-def format_plot(plot, region, product_placement, mpaa, offtime, permalink):
+def format_plot(plot, region, product_placement, mpaa, program_type=None, start_dt=None, stop_dt=None, offtime=None, permalink=None):
     """Format plot"""
     from datetime import datetime
     import dateutil.tz
 
     # Add additional metadata to plot
     plot_meta = ''
+    plot_date = ''
+
+    if program_type == 'epg' and start_dt and stop_dt:
+        start_str = start_dt.astimezone(dateutil.tz.gettz('Europe/Brussels')).strftime("%H:%M")
+        stop_str = stop_dt.astimezone(dateutil.tz.gettz('Europe/Brussels')).strftime("%H:%M")
+        local_start = start_dt.astimezone(dateutil.tz.gettz('Europe/Brussels'))
+        plot_date += f'[B]{localize_datelong(local_start)}[/B]\n{start_str} - {stop_str}'
+
     # Only display when a video disappears if it is within the next 3 months
     # Show the remaining days/hours the episode is still available
     if offtime:
@@ -146,10 +175,13 @@ def format_plot(plot, region, product_placement, mpaa, offtime, permalink):
     if mpaa:
         if plot_meta:
             plot_meta += '  '
-        plot_meta += '[B]{}[/B]'.format(mpaa)
+        plot_meta += f'[B]{mpaa}[/B]'
+
+    if plot_date:
+        plot = f'{plot_date}\n\n{plot}'
 
     if plot_meta:
-        plot = '{}\n\n{}'.format(plot_meta, plot)
+        plot = f'{plot}\n\n{plot_meta}'
 
     permalink = shorten_link(permalink)
     if permalink and get_setting_bool('showpermalink', default=False):
@@ -235,7 +267,7 @@ def get_next_info(episode_id):
 
 def get_stream_id_data(vrtmax_url):
     """Get stream_id from from GraphQL API"""
-    page_id = vrtmax_url.split('www.vrt.be')[1].replace('/vrtmax/', '/vrtnu/').rstrip('/') + '.model.json'
+    page_id = vrtmax_url.split('www.vrt.be')[1]
     graphql_query = """
          query StreamId($pageId: ID!) {
           page(id: $pageId) {
@@ -451,7 +483,7 @@ def get_latest_episode_data(program_name):
     if data.get('data').get('page'):
         for action in data.get('data').get('page').get('header').get('actionItems'):
             if action.get('title') == 'Bekijk de recentste aflevering':
-                latest_episode = get_single_episode_data(action.get('action').get('link')).get('data').get('page').get('episode')
+                latest_episode = get_single_episode_data(action.get('action').get('link')).get('data').get('page')
             else:
                 items = data.get('data').get('page').get('components')[0].get('items')[0].get('components')[0]
                 if not items.get('paginatedItems'):
@@ -463,7 +495,7 @@ def get_latest_episode_data(program_name):
                     ep_no = int(edge.get('node').get('episode').get('episodeNumberRaw') or 0)
                     if ep_no > highest_ep_no:
                         highest_ep_no = ep_no
-                        highest_ep = edge.get('node').get('episode')
+                        highest_ep = edge.get('node')
                 latest_episode = highest_ep
     return latest_episode
 
@@ -631,13 +663,13 @@ def set_favorite(program_id, program_title, favorited=True):
 
 def is_favorite(program_name):
     """Wether a program a favorited"""
-    favorite = get_latest_episode_data(program_name).get('favoriteAction').get('favorite')
+    favorite = get_latest_episode_data(program_name).get('episode').get('favoriteAction').get('favorite')
     return favorite
 
 
 def get_program_id(program_name):
     """Get the id of a program"""
-    program_id = get_latest_episode_data(program_name).get('program').get('id')
+    program_id = get_latest_episode_data(program_name).get('episode').get('program').get('id')
     return program_id
 
 
@@ -743,14 +775,13 @@ def finish_continue(episode_id):
 def get_entities(list_id, page_size='', end_cursor=''):
     """Get a list of episodes or programs using GraphQL API"""
     graphql_query = """
-        query TileList(
+         query TileList(
           $listId: ID!
-          $sort: SortInput
           $lazyItemCount: Int = 20
           $after: ID
           $before: ID
         ) {
-          list(listId: $listId, sort: $sort) {
+          list(listId: $listId) {
             __typename
             ... on PaginatedTileList {
               ...paginatedTileListFragment
@@ -762,61 +793,14 @@ def get_entities(list_id, page_size='', end_cursor=''):
             }
           }
         }
-        fragment staticTileListFragment on StaticTileList {
+        fragment paginatedTileListFragment on PaginatedTileList {
           __typename
           objectId
           listId
+          tileVariant
+          tileContentType
           title
           description
-          tileContentType
-          displayType
-          maxAge
-          tileVariant
-          sort {
-            icon
-            order
-            title
-            __typename
-          }
-          action {
-            ... on LinkAction {
-              __typename
-              externalTarget
-              link
-            }
-            ... on SwitchTabAction {
-              __typename
-              link
-              referencedTabId
-            }
-            __typename
-          }
-          banner {
-            actionItems {
-              ...actionItemFragment
-              __typename
-            }
-            description
-            image {
-              ...imageFragment
-              __typename
-            }
-            compactLayout
-            backgroundColor
-            textTheme
-            title
-            titleArt {
-              objectId
-              templateUrl
-              __typename
-            }
-            __typename
-          }
-          bannerSize
-          items {
-            ...tileFragment
-            __typename
-          }
           paginatedItems(first: $lazyItemCount, after: $after, before: $before) {
             __typename
             edges {
@@ -835,156 +819,38 @@ def get_entities(list_id, page_size='', end_cursor=''):
               startCursor
             }
           }
-          ... on IComponent {
-            ...componentTrackingDataFragment
-            __typename
-          }
         }
-        fragment actionItemFragment on ActionItem {
+        fragment staticTileListFragment on StaticTileList {
           __typename
           objectId
-          accessibilityLabel
-          active
-          mode
+          listId
+          tileVariant
+          tileContentType
           title
-          themeOverride
-          action {
-            ...actionFragment
+          description
+          paginatedItems(first: $lazyItemCount, after: $after, before: $before) {
             __typename
-          }
-          icons {
-            ...iconFragment
-            __typename
-          }
-        }
-        fragment actionFragment on Action {
-          __typename
-          ... on FavoriteAction {
-            id
-            favorite
-            title
-            __typename
-          }
-          ... on ListDeleteAction {
-            listName
-            id
-            listId
-            title
-            __typename
-          }
-          ... on ListTileDeletedAction {
-            listName
-            id
-            listId
-            __typename
-          }
-          ... on LinkAction {
-            internalTarget
-            link
-            internalTarget
-            externalTarget
-            passUserIdentity
-            zone {
-              preferredZone
-              isExclusive
+            edges {
               __typename
-            }
-            linkTokens {
-              __typename
-              placeholder
-              value
-            }
-            __typename
-          }
-          ... on ClientDrivenAction {
-            __typename
-            clientDrivenActionType
-          }
-          ... on ShareAction {
-            title
-            url
-            __typename
-          }
-          ... on SwitchTabAction {
-            referencedTabId
-            link
-            __typename
-          }
-          ... on FinishAction {
-            id
-            __typename
-          }
-        }
-        fragment iconFragment on Icon {
-          __typename
-          accessibilityLabel
-          position
-          ... on DesignSystemIcon {
-            value {
-              name
-              __typename
-            }
-            activeValue {
-              name
-              __typename
-            }
-            __typename
-          }
-          ... on ImageIcon {
-            value {
-              srcSet {
-                src
-                format
+              cursor
+              node {
                 __typename
+                ...tileFragment
               }
-              __typename
             }
-            activeValue {
-              srcSet {
-                src
-                format
-                __typename
-              }
+            pageInfo {
               __typename
+              endCursor
+              hasNextPage
+              hasPreviousPage
+              startCursor
             }
-            __typename
           }
-        }
-        fragment componentTrackingDataFragment on IComponent {
-          trackingData {
-            data
-            perTrigger {
-              trigger
-              data
-              template {
-                id
-                __typename
-              }
-              __typename
-            }
-            __typename
-          }
-          __typename
-        }
-        fragment imageFragment on Image {
-          __typename
-          objectId
-          alt
-          focusPoint {
-            x
-            y
-            __typename
-          }
-          templateUrl
         }
         fragment tileFragment on Tile {
           ... on IIdentifiable {
             __typename
             objectId
-          }
-          ... on IComponent {
-            ...componentTrackingDataFragment
-            __typename
           }
           ... on ITile {
             title
@@ -1021,57 +887,35 @@ def get_entities(list_id, page_size='', end_cursor=''):
               __typename
             }
             indexMeta {
+              ...metaFragment
               __typename
-              type
-              value
             }
             statusMeta {
+              ...metaFragment
               __typename
-              type
-              value
             }
             labelMeta {
-              __typename
-              type
-              value
-            }
-            __typename
-          }
-          ... on ContentTile {
-            brand
-            brandLogos {
-              ...brandLogosFragment
+              ...metaFragment
               __typename
             }
-            __typename
-          }
-          ... on BannerTile {
-            backgroundColor
-            brand
-            brandLogos {
-              ...brandLogosFragment
-              __typename
-            }
-            compactLayout
-            description
-            textTheme
-            titleArt {
-              objectId
-              templateUrl
-              __typename
-            }
+            componentId
             __typename
           }
           ... on EpisodeTile {
+            tileType
+            title
+            componentType
             description
             available
             chapterStart
+            formattedDuration
             progress {
               completed
               progressInSeconds
               durationInSeconds
               __typename
             }
+            whatsonId
             episode {
               __typename
               id
@@ -1093,29 +937,22 @@ def get_entities(list_id, page_size='', end_cursor=''):
                 alt
                 templateUrl
               }
-
               ageRaw
               ageValue
-
               durationRaw
               durationValue
               durationSeconds
-
               episodeNumberRaw
               episodeNumberValue
               episodeNumberShortValue
-
               onTimeRaw
               onTimeValue
               onTimeShortValue
-
               offTimeRaw
               offTimeValue
               offTimeShortValue
-
               productPlacementValue
               productPlacementShortValue
-
               regionRaw
               regionValue
               program {
@@ -1227,89 +1064,131 @@ def get_entities(list_id, page_size='', end_cursor=''):
               }
             }
           }
-          ... on PodcastEpisodeTile {
-            available
-            description
-            progress {
-              completed
-              progressInSeconds
-              durationInSeconds
-              __typename
-            }
-            __typename
-          }
-          ... on AudioLivestreamTile {
-            brand
-            brandsLogos {
-              brand
-              brandTitle
-              logos {
-                ...brandLogosFragment
-                __typename
-              }
-              __typename
-            }
-            progress {
-              durationInSeconds
-              progressInSeconds
-              __typename
-            }
-            __typename
-          }
-          ... on LivestreamTile {
-            description
-            progress {
-              durationInSeconds
-              progressInSeconds
-              __typename
-            }
-            __typename
-          }
-          ... on ButtonTile {
-            mode
-            icons {
-              ...iconFragment
-              __typename
-            }
-            __typename
-          }
-          ... on RadioEpisodeTile {
-            available
-            description
-            progress {
-              completed
-              progressInSeconds
-              durationInSeconds
-              __typename
-            }
-            __typename
-          }
-          ... on RadioFragmentTile {
-            progress {
-              completed
-              progressInSeconds
-              durationInSeconds
-              __typename
-            }
-            __typename
-          }
-          ... on SongTile {
-            startDate
-            formattedStartDate
-            endDate
-            description
-            __typename
-          }
           __typename
         }
-        fragment brandLogosFragment on Logo {
-          colorOnColor
-          height
-          mono
-          primary
-          type
-          width
+        fragment actionItemFragment on ActionItem {
           __typename
+          objectId
+          accessibilityLabel
+          active
+          mode
+          title
+          themeOverride
+          action {
+            ...actionFragment
+            __typename
+          }
+          icons {
+            ...iconFragment
+            __typename
+          }
+        }
+        fragment actionFragment on Action {
+          __typename
+          ... on FavoriteAction {
+            id
+            favorite
+            title
+            __typename
+          }
+          ... on ListDeleteAction {
+            listName
+            id
+            listId
+            title
+            __typename
+          }
+          ... on ListTileDeletedAction {
+            listName
+            id
+            listId
+            __typename
+          }
+          ... on LinkAction {
+            internalTarget
+            link
+            internalTarget
+            externalTarget
+            passUserIdentity
+            zone {
+              preferredZone
+              isExclusive
+              __typename
+            }
+            linkTokens {
+              __typename
+              placeholder
+              value
+            }
+            __typename
+          }
+          ... on ClientDrivenAction {
+            __typename
+            clientDrivenActionType
+          }
+          ... on ShareAction {
+            title
+            url
+            __typename
+          }
+          ... on SwitchTabAction {
+            referencedTabId
+            link
+            __typename
+          }
+          ... on FinishAction {
+            id
+            __typename
+          }
+        }
+        fragment iconFragment on Icon {
+          __typename
+          accessibilityLabel
+          position
+          type
+          ... on DesignSystemIcon {
+            value {
+              __typename
+              color
+              name
+            }
+            activeValue {
+              __typename
+              color
+              name
+            }
+            __typename
+          }
+          ... on ImageIcon {
+            value {
+              __typename
+              srcSet {
+                src
+                format
+                __typename
+              }
+            }
+            activeValue {
+              __typename
+              srcSet {
+                src
+                format
+                __typename
+              }
+            }
+            __typename
+          }
+        }
+        fragment imageFragment on Image {
+          __typename
+          objectId
+          alt
+          focusPoint {
+            x
+            y
+            __typename
+          }
+          templateUrl
         }
         fragment metaFragment on MetaDataItem {
           __typename
@@ -1317,79 +1196,6 @@ def get_entities(list_id, page_size='', end_cursor=''):
           value
           shortValue
           longValue
-        }
-        fragment paginatedTileListFragment on PaginatedTileList {
-          __typename
-          objectId
-          listId
-          action {
-            ... on LinkAction {
-              __typename
-              externalTarget
-              link
-            }
-            ... on SwitchTabAction {
-              __typename
-              link
-              referencedTabId
-            }
-            __typename
-          }
-          banner {
-            actionItems {
-              ...actionItemFragment
-              __typename
-            }
-            backgroundColor
-            compactLayout
-            description
-            image {
-              ...imageFragment
-              __typename
-            }
-            titleArt {
-              ...imageFragment
-              __typename
-            }
-            textTheme
-            title
-            __typename
-          }
-          bannerSize
-          displayType
-          maxAge
-          tileVariant
-          paginatedItems(first: $lazyItemCount, after: $after, before: $before) {
-            __typename
-            edges {
-              __typename
-              cursor
-              node {
-                __typename
-                ...tileFragment
-              }
-            }
-            pageInfo {
-              __typename
-              endCursor
-              hasNextPage
-              hasPreviousPage
-              startCursor
-            }
-          }
-          sort {
-            icon
-            order
-            title
-            __typename
-          }
-          tileContentType
-          title
-          description
-          ... on IComponent {
-            ...componentTrackingDataFragment
-            __typename
-          }
         }
     """
     operation_name = 'TileList'
@@ -1483,125 +1289,202 @@ def convert_programs(item_list, destination, end_cursor='', use_favorites=False,
     return programs
 
 
-def convert_episode(episode, destination=None):
+def convert_episode(episode_tile, destination=None):
     """Convert paginated episode item to TitleItem"""
     import dateutil.parser
-    import base64
-    # FIXME: find a better way to abort when we have no valid api data
-    if not episode:
-        return None, None, None, None
-    episode_id = episode.get('id')
-    episode_page = episode.get('analytics').get('pageName')
-    video_id = episode.get('watchAction').get('videoId')
-    publication_id = episode.get('watchAction').get('publicationId')
-    path = url_for('play_id', video_id=video_id, publication_id=publication_id, episode_id=base64.b64encode(episode_page.encode('utf-8')).decode('utf-8'))
-    program_name = url_to_program(episode.get('program').get('link'))
-    program_id = episode.get('program').get('id')
-    program_title = episode.get('program').get('title')
-    program_type = episode.get('program').get('programType')
+    from datetime import datetime, timedelta
+    from base64 import b64decode, b64encode
+    import dateutil.tz
 
-    # FIXME: Find a better way to determine mixed episodes
-    if destination in ('recent', 'favorites_recent', 'resumepoints_continue', 'featured', 'search_query'):
-        program_type = 'mixed_episodes'
+    title_item = TitleItem(label=None, art_dict={}, info_dict={})
+    now = datetime.now(dateutil.tz.tzlocal())
 
-    episode_title = episode.get('title')
+    # Defaults
+    path = None
+    duration = timedelta(seconds=0)
+    start_dt = stop_dt = None
+    program_type = None
+    favorited = False
+    plot = ''
+    region = None
+    product_placement = None
+    mpaa = None
+    offtime = None
+    permalink = None
 
-    offtime = dateutil.parser.parse(episode.get('offTimeRaw') or '1970-01-01T00:00:00.000+00:00')
-    ontime = dateutil.parser.parse(episode.get('onTimeRaw') or '1970-01-01T00:00:00.000+00:00')
-    mpaa = episode.get('ageRaw') or ''
-    product_placement = episode.get('productPlacementShortValue') == 'pp'
-    region = episode.get('regionRaw')
-    permalink = episode.get('permalink')
-    plot = episode.get('description') or ''
-    plot = format_plot(plot, region, product_placement, mpaa, offtime, permalink)
-    plotoutline = episode.get('program').get('subtitle')
-    duration = int(episode.get('durationSeconds'))
-    episode_no = int(episode.get('episodeNumberRaw') or 0)
-    season_no = int(''.join(i for i in episode.get('season').get('titleRaw') if i.isdigit()) or 0)
-    studio = episode.get('brand').title() if episode.get('brand') else 'VRT'
-    aired = dateutil.parser.parse(episode.get('analytics').get('airDate')).strftime('%Y-%m-%d')
-    dateadded = ontime.strftime('%Y-%m-%d %H:%M:%S')
-    year = int(dateutil.parser.parse(episode.get('onTimeRaw')).strftime('%Y'))
-    tag = [tag.title() for tag in episode.get('analytics').get('categories').split(',') if tag]
+    # Basic tile properties
+    is_playable = episode_tile.get('available')
+    is_live = episode_tile.get('active')
+    program_title = episode_tile.get('title')
+    episode_title = None
 
-    # Art
-    fanart = ''
-    fanart_img = episode.get('program').get('image')
-    if fanart_img:
-        fanart = reformat_image_url(fanart_img.get('templateUrl'))
-    poster = ''
-    poster_img = episode.get('program').get('posterImage')
-    if poster_img:
-        poster = reformat_image_url(poster_img.get('templateUrl'))
-    thumb = ''
-    thumb_img = episode.get('image')
-    if thumb_img:
-        thumb = reformat_image_url(thumb_img.get('templateUrl'))
+    episode = episode_tile.get('episode')
+    if episode:
+        analytics = episode.get('analytics', {})
+        program = episode.get('program', {})
+        watch_action = episode.get('watchAction', {})
 
-    # Check favorite
-    favorited = episode.get('favoriteAction').get('favorite')
+        # IDs and paths
+        episode_id = episode.get('id')
+        episode_page = analytics.get('pageName', '')
+        video_id = watch_action.get('videoId')
+        publication_id = watch_action.get('publicationId')
+        encoded_page = b64encode(episode_page.encode('utf-8')).decode('utf-8')
 
-    # Check continue
-    is_continue = False
-    if destination == 'resumepoints_continue':
-        is_continue = True
+        path = url_for('play_id', video_id=video_id, publication_id=publication_id, episode_id=encoded_page)
+        program_name = url_to_program(program.get('link'))
+        program_id = program.get('id')
+        program_title = program.get('title')
+        program_type = program.get('programType')
+        episode_title = episode.get('title')
 
-    # Context menu
-    context_menu = get_context_menu(program_name, program_id, program_title, program_type,
-                                    favorited, is_continue, episode_id)
+        # Timing and duration
+        ontime = dateutil.parser.parse(episode.get('onTimeRaw') or '1970-01-01T00:00:00.000+00:00')
+        offtime = dateutil.parser.parse(episode.get('offTimeRaw') or '1970-01-01T00:00:00.000+00:00')
+        start_dt = ontime
 
-    # Label
-    label = format_label(program_title, episode_title, program_type, ontime, favorited)
+        if episode.get('durationRaw'):
+            duration = parse_duration(episode['durationRaw'])
+        else:
+            duration = timedelta(seconds=episode.get('durationSeconds', 0))
+        stop_dt = start_dt + duration
 
-    # Sorting
-    sort, ascending = get_sort(program_type)
+        # Metadata
+        mpaa = episode.get('ageRaw') or ''
+        product_placement = episode.get('productPlacementShortValue') == 'pp'
+        region = episode.get('regionRaw')
+        permalink = episode.get('permalink')
+        plot = episode.get('description') or ''
+        plotoutline = program.get('subtitle')
+        studio = episode.get('brand').title() if episode.get('brand') else 'VRT'
+        aired = dateutil.parser.parse(analytics.get('airDate', now.isoformat())).strftime('%Y-%m-%d')
+        dateadded = ontime.strftime('%Y-%m-%d %H:%M:%S')
+        year = int(ontime.strftime('%Y'))
+        tag = [t.strip().title() for t in analytics.get('categories', '').split(',') if t.strip()]
 
-    # Resumepoint
-    position = episode.get('watchAction').get('resumePoint')
-    total = episode.get('watchAction').get('resumePointTotal')
-    prop_dict = {}
-    playcount = -1
+        episode_no = int(episode.get('episodeNumberRaw') or 0)
+        season_no = int(''.join(ch for ch in episode.get('season', {}).get('titleRaw', '') if ch.isdigit()) or 0)
 
-    if resumepoints_is_activated():
-        # Override Kodi watch status
-        if position and total:
-            if RESUMEPOINTS_MARGIN < position < total - RESUMEPOINTS_MARGIN:
-                prop_dict['resumetime'] = position
-                prop_dict['totaltime'] = total
-            if position > total - RESUMEPOINTS_MARGIN:
-                playcount = 1
+        # Art
+        fanart = ''
+        poster = ''
+        thumb = ''
 
-    return sort, ascending, favorited, TitleItem(
-        label=label,
-        path=path,
-        art_dict={
+        fanart_img = program.get('image')
+        if fanart_img:
+            fanart = reformat_image_url(fanart_img.get('templateUrl'))
+
+        poster_img = program.get('posterImage')
+        if poster_img:
+            poster = reformat_image_url(poster_img.get('templateUrl'))
+
+        thumb_img = episode.get('image')
+        if thumb_img:
+            thumb = reformat_image_url(thumb_img.get('templateUrl'))
+
+        title_item.art_dict = {
             'thumb': thumb,
             'poster': poster,
             'banner': fanart,
             'fanart': fanart,
-        },
-        info_dict={
-            'title': label,
+        }
+
+        # Favorite / Continue
+        favorited = (episode.get('favoriteAction') or {}).get('favorite')
+        is_continue = destination == 'resumepoints_continue'
+
+        # Mark mixed episode categories
+        if destination in ('recent', 'favorites_recent', 'resumepoints_continue', 'featured', 'search_query'):
+            program_type = 'mixed_episodes'
+
+        # Context menu
+        context_menu = get_context_menu(
+            program_name, program_id, program_title, program_type, favorited, is_continue, episode_id
+        )
+
+        # Resume point logic
+        position = watch_action.get('resumePoint')
+        total = watch_action.get('resumePointTotal')
+        prop_dict = {}
+        playcount = -1
+
+        if resumepoints_is_activated() and position and total:
+            if RESUMEPOINTS_MARGIN < position < total - RESUMEPOINTS_MARGIN:
+                prop_dict.update({'resumetime': position, 'totaltime': total})
+            if position > total - RESUMEPOINTS_MARGIN:
+                playcount = 1
+
+        # Info dict
+        title_item.info_dict = {
             'tvshowtitle': program_title,
             'aired': aired,
             'dateadded': dateadded,
             'episode': episode_no,
             'season': season_no,
             'playcount': playcount,
-            'plot': plot,
             'plotoutline': plotoutline,
             'mpaa': mpaa,
             'tagline': plotoutline,
-            'duration': duration,
             'studio': studio,
             'year': year,
             'tag': tag,
-            'mediatype': 'episode',
-        },
-        context_menu=context_menu,
-        is_playable=True,
-        prop_dict=prop_dict,
-    )
+        }
+        title_item.context_menu = context_menu
+        title_item.prop_dict = prop_dict
+
+    else:
+        # Fallback when no 'episode' key
+        if episode_tile.get('image'):
+            img = episode_tile['image'].get('templateUrl')
+            title_item.art_dict['thumb'] = img
+            title_item.art_dict['fanart'] = img
+
+    # EPG entries
+    if episode_tile.get('indexMeta'):
+        program_type = 'epg'
+        comp_id = episode_tile.get('componentId', '').lstrip('#')
+        decoded = b64decode(comp_id.encode('utf-8')).decode('utf-8')
+        epg_parts = decoded.split('|')[3].split('#1')
+        channel_id, start_str = epg_parts[0], epg_parts[-1]
+
+        start_dt = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
+        if not duration:
+            minutes = int(episode_tile['statusMeta'][0]['value'].split()[0])
+            duration = timedelta(minutes=minutes)
+        stop_dt = start_dt + duration
+
+        # Fix unplayable episodes
+        if not is_playable:
+            # Play episode from past 24h livestream cache
+            if now - timedelta(hours=LIVESTREAM_CACHE_HOURS) <= stop_dt <= now:
+                is_playable = True
+                channel = find_entry(CHANNELS, 'id', channel_id)
+                start_iso = start_dt.astimezone(dateutil.tz.gettz('Europe/Brussels')).isoformat()[:19]
+                stop_iso = stop_dt.astimezone(dateutil.tz.gettz('Europe/Brussels')).isoformat()[:19]
+                path = url_for('play_air_date', channel['name'], start_iso, stop_iso)
+            else:
+                path = url_for('noop')
+        # Play livestream
+        elif is_live:
+            path = url_for('play_url', 'https://www.vrt.be' + episode_tile['action']['link'])
+
+    # Final formatting
+    plot = format_plot(plot, region, product_placement, mpaa, program_type, start_dt, stop_dt, offtime, permalink)
+    title_item.info_dict['plot'] = plot
+    title_item.path = path
+
+    # Label
+    label = format_label(program_title, episode_title, program_type, start_dt, favorited,
+                         is_playable=is_playable, is_live=is_live)
+    title_item.label = label
+    title_item.info_dict['title'] = label
+    title_item.info_dict['mediatype'] = 'episode'
+    title_item.info_dict['duration'] = duration.total_seconds()
+    title_item.is_playable = is_playable
+
+    # Sorting
+    sort, ascending = get_sort(program_type)
+    return sort, ascending, favorited, title_item
 
 
 def convert_episodes(item_list, destination, end_cursor='', use_favorites=False, **kwargs):
@@ -1613,7 +1496,7 @@ def convert_episodes(item_list, destination, end_cursor='', use_favorites=False,
     if item_list:
 
         for item in item_list:
-            episode = item.get('node').get('episode')
+            episode = item.get('node') or item
 
             sort, ascending, favorited, title_item = convert_episode(episode, destination)
 
@@ -1632,7 +1515,7 @@ def convert_episodes(item_list, destination, end_cursor='', use_favorites=False,
             episodes.append(
                 TitleItem(
                     label=colour(localize(30300)),
-                    path=url_for(destination, end_cursor=end_cursor, **kwargs),
+                    path=url_for(destination, end_cursor=quote(end_cursor, safe=''), **kwargs),
                     art_dict={'thumb': 'DefaultInProgressShows.png'},
                     info_dict={},
                     prop_dict={'SpecialSort': 'bottom'},
@@ -1645,9 +1528,8 @@ def convert_episodes(item_list, destination, end_cursor='', use_favorites=False,
 def get_single_episode(episode_id):
     """Get single episode"""
     title_item = None
-    episode_page = get_single_episode_data(episode_id).get('data').get('page')
-    if episode_page is not None:
-        episode = episode_page.get('episode')
+    episode = get_single_episode_data(episode_id).get('data').get('page')
+    if episode is not None:
         _, _, _, title_item = convert_episode(episode)
     return title_item
 
@@ -1848,7 +1730,8 @@ def get_recent_episodes(end_cursor='', use_favorites=False):
     return episodes, sort, ascending, content
 
 
-def get_episodes(list_id=None, destination=None, end_cursor='', program_name=None, season_name=None, use_favorites=False, feature=None, keywords=None):
+def get_episodes(list_id=None, destination=None, end_cursor='', program_name=None, season_name=None, use_favorites=False,
+                 feature=None, keywords=None, date=None, channel=None):
     """Get episodes"""
     sort = 'unsorted'
     ascending = True
@@ -1892,7 +1775,8 @@ def get_episodes(list_id=None, destination=None, end_cursor='', program_name=Non
         end_cursor = page_info.get('endCursor')
 
     episodes, sort, ascending = convert_episodes(item_list, destination=destination, end_cursor=end_cursor, use_favorites=use_favorites,
-                                                 program_name=program_name, season_name=season_name, feature=feature, keywords=keywords)
+                                                 program_name=program_name, season_name=season_name, feature=feature, keywords=keywords,
+                                                 date=date, channel=channel)
     return episodes, sort, ascending, 'episodes'
 
 
@@ -1997,7 +1881,7 @@ def api_req(graphql_query, operation_name, variables, client='WEB'):
             'x-vrt-client-name': client,
             'x-vrt-client-version': '1.5.12',
         }
-        data_json = get_url_json(url=GRAPHQL_URL, cache=None, headers=headers, data=data, raise_errors='all')
+        data_json = get_url_json(url=GRAPHQL_URL, cache=None, headers=headers, data=data)
     return data_json
 
 
@@ -2317,21 +2201,25 @@ def get_episode_by_air_date(channel_name, start_date, end_date=None):
 
         # Airdate live2vod feature: use livestream cache of last 24 hours if no video was found
         offairdate_guess = dateutil.parser.parse(episode_guess.get('endTime'))
-        if now - timedelta(hours=24) <= dateutil.parser.parse(episode_guess.get('endTime')) <= now:
+        if now - timedelta(hours=LIVESTREAM_CACHE_HOURS) <= dateutil.parser.parse(episode_guess.get('endTime')) <= now:
             start_date = onairdate.astimezone(dateutil.tz.UTC).isoformat()[0:19]
             end_date = offairdate_guess.astimezone(dateutil.tz.UTC).isoformat()[0:19]
 
         # Offairdate defined
-        if offairdate and now - timedelta(hours=24) <= offairdate <= now:
+        if offairdate and now - timedelta(hours=LIVESTREAM_CACHE_HOURS) <= offairdate <= now:
             start_date = onairdate.astimezone(dateutil.tz.UTC).isoformat()[:19]
             end_date = offairdate.astimezone(dateutil.tz.UTC).isoformat()[:19]
 
         if start_date and end_date:
             live2vod_title = '{} ({})'.format(episode_guess.get('title'), localize(30454))  # from livestream cache
+            log(2, live2vod_title)
             video_item = TitleItem(
                 label=live2vod_title,
                 info_dict={
-                    'title': live2vod_title
+                    'tvshowtitle': live2vod_title,
+                    'aired': start_date[:10],
+                    'year': int(start_date[:4]),
+                    'mediatype': 'episode',
                 },
                 art_dict={
                     'thumb': episode_guess.get('image'),
