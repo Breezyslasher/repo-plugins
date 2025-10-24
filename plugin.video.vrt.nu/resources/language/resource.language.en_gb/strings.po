@@ -359,6 +359,10 @@ msgctxt "#30208"
 msgid "[COLOR={availability}][B]{minutes} more minutes[/B] available[/COLOR]"
 msgstr ""
 
+msgctxt "#30209"
+msgid "[COLOR={availability}]Already expired[/COLOR]"
+msgstr ""
+
 msgctxt "#30300"
 msgid "[B][COLOR={highlighted}]More…[/COLOR][/B]"
 msgstr ""
@@ -670,7 +674,7 @@ msgid "VRT 1"
 msgstr ""
 
 msgctxt "#30824"
-msgid "Canvas"
+msgid "VRT Canvas"
 msgstr ""
 
 msgctxt "#30825"

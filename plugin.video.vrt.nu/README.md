@@ -59,6 +59,28 @@ leave a message at [our Facebook page](https://facebook.com/kodivrtnu/).
 </table>
 
 ## Releases
+### v2.5.44 (2025-10-10)
+- Improve TV guide menu listings (@mediaminister)
+- Fix api requests for long episode lists (@mediaminister)
+
+### v2.5.43 (2025-09-15)
+- Fix TV guide menu listings (@mediaminister)
+
+### v2.5.42 (2025-08-29)
+- Fix api calls (@mediaminister)
+
+### v2.5.41 (2025-08-28)
+- Updated various api calls (@mediaminister)
+
+### v2.5.40 (2025-08-13)
+- Fixed incorrect item count in menu listings (@mediaminister)
+
+### v2.5.39 (2025-07-20)
+- Fix category menu listings (@mediaminister)
+
+### v2.5.38 (2025-05-12)
+- Fix Ketnet Jr livestream (@mediaminister)
+
 ### v2.5.37 (2025-04-04)
 - Fix DRM streams (@mediaminister)
 

@@ -2,16 +2,10 @@
 # GNU General Public License v3.0 (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 """This is the actual VRT MAX video plugin entry point"""
 
-from __future__ import absolute_import, division, unicode_literals
+from urllib.parse import unquote, unquote_plus
+
 from routing import Plugin
-
-try:  # Python 3
-    from urllib.parse import unquote_plus
-except ImportError:  # Python 2
-    from urllib import unquote_plus
-
 from kodiutils import container_refresh, end_of_directory, execute_builtin, get_global_setting, localize, log_access, notification, ok_dialog, refresh_caches
-from utils import from_unicode, to_unicode
 
 plugin = Plugin()  # pylint: disable=invalid-name
 
@@ -47,8 +41,8 @@ def delete_tokens():
 def follow(program_id, program_title):
     """The API interface to follow a program used by the context menu"""
     from api import set_favorite
-    set_favorite(program_id=program_id, program_title=to_unicode(unquote_plus(from_unicode(program_title))))
-    notification(message=localize(30411, title=program_title))
+    set_favorite(program_id=program_id, program_title=unquote_plus(program_title))
+    notification(message=localize(30411, title=unquote_plus(program_title)))
     container_refresh()
 
 
@@ -56,8 +50,8 @@ def follow(program_id, program_title):
 def unfollow(program_id, program_title):
     """The API interface to unfollow a program used by the context menu"""
     from api import set_favorite
-    set_favorite(program_id=program_id, program_title=to_unicode(unquote_plus(from_unicode(program_title))), is_favorite=False)
-    notification(message=localize(30412, title=program_title))
+    set_favorite(program_id=program_id, program_title=unquote_plus(program_title), favorited=False)
+    notification(message=localize(30412, title=unquote_plus(program_title)))
     container_refresh()
 
 
@@ -182,10 +176,11 @@ def featured(feature=None, end_cursor=''):
 @plugin.route('/tvguide/date')
 @plugin.route('/tvguide/date/<date>')
 @plugin.route('/tvguide/date/<date>/<channel>')
-def tvguide(date=None, channel=None):
+@plugin.route('/tvguide/date/<date>/<channel>/<end_cursor>')
+def tvguide(date=None, channel=None, end_cursor=''):
     """The TV guide menu and listings by date"""
     from tvguide import TVGuide
-    TVGuide().show_tvguide(date=date, channel=channel)
+    TVGuide().show_tvguide(date=date, channel=channel, end_cursor=unquote(end_cursor))
 
 
 @plugin.route('/tvguide/channel')

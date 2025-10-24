@@ -1,6 +1,6 @@
 
 # ------------------------------------------------------------------------------
-#  Copyright (c) 2022-2023 Dimitri Kroon.
+#  Copyright (c) 2022-2025 Dimitri Kroon.
 #  This file is part of plugin.video.cinetree.
 #  SPDX-License-Identifier: GPL-2.0-or-later.
 #  See LICENSE.txt
@@ -45,8 +45,9 @@ def parse(document: str) -> dict:
         document = document.replace('{}', 'null')
 
         # Split the document in the function body, parameter and arguments list
-        funct, args = document.rsplit('}', 1)
-        _, funct = funct.split('function(', 1)
+        pos = document.rfind('}(')
+        args = document[pos + 1:]
+        _, funct = document[:pos].split('function(', 1)
 
         # Find the closing parentheses of the function definition and split the string
         # in the parameter list and function body
@@ -63,7 +64,7 @@ def parse(document: str) -> dict:
         param_list = params.split(",")
         # Create a list of arguments
         args_list = _create_args_list(args)
-    except(IndexError, ValueError, TypeError, AttributeError):
+    except (IndexError, ValueError, TypeError, AttributeError):
         logger.error("JSONP parse error: document does not have the expected structure", exc_info=True)
         raise ParseError
 
@@ -176,7 +177,7 @@ def _substitute_args(jsonp_doc: str, args_map: dict) -> str:
         The passed match can contain quoted as wel as un-quoted string, but only un-quoted
         string are in capture group 1. To ensure not te replace anything resembling a
         parameter or a key in normal text, only perform the operations on the parts that are
-        not enclosed in double quotes, i.e when match has group 1.
+        not enclosed in double quotes, i.e. when match has group 1.
 
         """
         orig_str = match.group(1)

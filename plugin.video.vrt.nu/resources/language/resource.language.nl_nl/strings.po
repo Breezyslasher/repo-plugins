@@ -359,6 +359,10 @@ msgctxt "#30208"
 msgid "[COLOR={availability}][B]{minutes} more minutes[/B] available[/COLOR]"
 msgstr "[COLOR={availability}]Nog [B]{minutes} minuten[/B] beschikbaar[/COLOR]"
 
+msgctxt "#30209"
+msgid "[COLOR={availability}]Already expired[/COLOR]"
+msgstr "[COLOR={availability}]Al verlopen[/COLOR]"
+
 msgctxt "#30300"
 msgid "[B][COLOR={highlighted}]More…[/COLOR][/B]"
 msgstr "[B][COLOR={highlighted}]Meer…[/COLOR][/B]"
@@ -670,8 +674,8 @@ msgid "VRT 1"
 msgstr "VRT 1"
 
 msgctxt "#30824"
-msgid "Canvas"
-msgstr "Canvas"
+msgid "VRT Canvas"
+msgstr "VRT Canvas"
 
 msgctxt "#30825"
 msgid "Ketnet"
@@ -990,14 +994,6 @@ msgstr "Wegens belangrijke interne wijzigingen werken bestaande Kodi-favorieten 
 msgctxt "#30981"
 msgid "Successfully invalidated caches."
 msgstr "Caches werden ongeldig gemaakt."
-
-msgctxt "#30982"
-msgid "Successfully refreshed favorites."
-msgstr "Favoriete programmma's werden ververst."
-
-msgctxt "#30983"
-msgid "Successfully refreshed watching activity."
-msgstr "Kijkactiviteit werd ververst."
 
 msgctxt "#30985"
 msgid "Successfully cleared VRT tokens."

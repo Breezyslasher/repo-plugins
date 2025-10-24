@@ -2,18 +2,13 @@
 # GNU General Public License v3.0 (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 """This module collects and prepares stream info for Kodi Player."""
 
-from __future__ import absolute_import, division, unicode_literals
-
-try:  # Python 3
-    from urllib.error import HTTPError
-    from urllib.parse import quote
-except ImportError:  # Python 2
-    from urllib2 import quote, HTTPError
+from urllib.error import HTTPError
+from urllib.parse import quote
 
 from helperobjects import ApiData, StreamURLS
 from kodiutils import (addon_profile, can_play_drm, container_reload, exists, end_of_directory, generate_expiration_date, get_cache,
                        get_max_bandwidth, get_setting_bool, get_url_json, has_inputstream_adaptive, invalidate_caches, kodi_version_major,
-                       localize, log, log_error, mkdir, ok_dialog, open_settings, open_url, supports_drm, to_unicode, update_cache)
+                       localize, log, log_error, mkdir, ok_dialog, open_settings, open_url, supports_drm, update_cache)
 
 
 class StreamService:
@@ -112,27 +107,41 @@ class StreamService:
 
            Right after a program is completely broadcasted, the stop timestamp is usually missing and should be added to the manifest_url.
         """
-        if any(param in manifest_url for param in ('?t=', '&t=')):
-            try:  # Python 3
-                from urllib.parse import parse_qs, urlsplit
-            except ImportError:  # Python 2
-                from urlparse import parse_qs, urlsplit
-            import re
+        from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+        import re
 
+        parsed = urlparse(manifest_url)
+        query = parse_qs(parsed.query)
+
+        if 't' in query:
             # Detect single start timestamp
-            begin = parse_qs(urlsplit(manifest_url).query).get('t')[0]
+            start = query['t'][0]
             rgx = re.compile(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$')
-            is_single_start_timestamp = bool(re.match(rgx, begin))
-            if begin and is_single_start_timestamp:
+            is_single_start_timestamp = bool(re.match(rgx, start))
+            if start and is_single_start_timestamp:
                 from datetime import datetime, timedelta
                 import dateutil.parser
-                begin_time = dateutil.parser.parse(begin)
+                start_time = dateutil.parser.parse(start)
                 # Calculate end_time with a safety margin
-                end_time = begin_time + duration + timedelta(seconds=10)
+                stop_time = start_time + duration + timedelta(seconds=10)
+
                 # Add stop timestamp if a program is broadcasted completely
                 now = datetime.utcnow()
-                if end_time < now:
-                    manifest_url += '-' + end_time.strftime('%Y-%m-%dT%H:%M:%S')
+                if stop_time < now:
+
+                    # Append end time with a hyphen
+                    stop = stop_time.strftime('%Y-%m-%dT%H:%M:%S')
+                    new_t = f'{start}-{stop}'
+
+                    # Replace t in query
+                    query['t'] = [new_t]
+                    new_query = urlencode(query, doseq=True)
+
+                    # Build new URL
+                    manifest_url = urlunparse(
+                        (parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment)
+                    )
+
         return manifest_url
 
     def get_stream(self, video, roaming=False, api_data=None):
@@ -192,9 +201,6 @@ class StreamService:
                         uri = manifest_url
                         querystring = ''
                     manifest_url = '{}?t={}-{}{}'.format(uri, video.get('start_date'), video.get('end_date'), querystring)
-
-                # FIXME: Remove '#' URI fragment identifier from manifest url because InputStream Adaptive refuses to play these urls
-                manifest_url = manifest_url.replace('#', '')
 
                 # Fix virtual subclip
                 from datetime import timedelta
@@ -306,7 +312,7 @@ class StreamService:
             return None
         if response is None:
             return None
-        hls_playlist = to_unicode(response.read())
+        hls_playlist = response.read().decode('utf-8')
         max_bandwidth = get_max_bandwidth()
         stream_bandwidth = None
 
@@ -328,9 +334,10 @@ class StreamService:
                 break
 
         if stream_bandwidth > max_bandwidth and not hls_variant_url:
-            message = localize(30057, max=max_bandwidth, min=stream_bandwidth)
+            message = localize(30957, max=max_bandwidth, min=stream_bandwidth)
             ok_dialog(message=message)
             open_settings()
+            return self._select_hls_substreams(master_hls_url, protocol)
 
         # Get audio url
         if hls_audio_id:

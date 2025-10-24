@@ -30,6 +30,7 @@ class ItvSession:
     def __init__(self):
         self._user_id = ''
         self._user_nickname = ''
+        self._tv_region = None
         self._expire_time = 0
         self.account_data = {}
         self.read_account_data()
@@ -63,6 +64,10 @@ class ItvSession:
     def user_nickname(self):
         return self._user_nickname or ''
 
+    @property
+    def tv_region(self):
+        return self._tv_region or ''
+
     def read_account_data(self):
         session_file = os.path.join(utils.addon_info.profile, "itv_session")
         logger.debug("Reading account data from file: %s", session_file)
@@ -82,7 +87,7 @@ class ItvSession:
         else:
             self.account_data = acc_data
         access_token = self.account_data.get('itv_session', {}).get('access_token')
-        self._user_id, self._user_nickname, self._expire_time = parse_token(access_token)
+        self.parse_token(access_token)
 
     def save_account_data(self):
         session_file = os.path.join(utils.addon_info.profile, "itv_session")
@@ -98,7 +103,6 @@ class ItvSession:
         Raises AuthenticationError if login fails, or other exceptions as they occur, like e.g. FetchError.
         """
         import requests
-        from resources.lib.telemetry_data import telemetry_factory
         self.account_data = {}
 
         req_data = {
@@ -121,9 +125,8 @@ class ItvSession:
                     'accept-language':      'en-GB,en;q=0.5',
                     'accept-encoding':      'gzip, deflate',
                     'content-type':         'application/json',
-                    'akamai-bm-telemetry':  telemetry_factory.get_data(),
-                    'origin':               'https://www.itv.com',
-                    'referer':              'https://www.itv.com/',
+                    'origin':               'https://app.10ft.itv.com',
+                    'referer':              'https://app.10ft.itv.com/',
                     'sec-fetch-dest':       'empty',
                     'sec-fetch-mode':       'cors',
                     'sec-fetch-site':       'same-site',
@@ -157,7 +160,7 @@ class ItvSession:
             raise
         else:
             logger.info("Sign in successful.")
-            self._user_id, self._user_nickname, self._expire_time = parse_token(session_data.get('access_token'))
+            self.parse_token(session_data.get('access_token'))
             self.save_account_data()
             return True
 
@@ -170,11 +173,10 @@ class ItvSession:
         logger.debug("Refreshing ITV account tokens...")
         try:
             token = self.account_data['itv_session']['refresh_token']
-            url = 'https://auth.prd.user.itv.com/token?grant_type=refresh_token&' \
-                  'token=content_token refresh_token&refresh=' + token
             # Refresh requests require no authorization header and no cookies at all
             resp = fetch.get_json(
-                url,
+                'https://auth.prd.user.itv.com/token',
+                params={'refresh': token},
                 headers={'Accept': 'application/vnd.user.auth.v2+json'},
                 timeout=10
             )
@@ -184,7 +186,7 @@ class ItvSession:
             sess_cookie_str = build_cookie(session_data)
             self.account_data['cookies']['Itv.Session'] = sess_cookie_str
             self.account_data['refreshed'] = time.time()
-            self._user_id, self._user_nickname, self._expire_time = parse_token(session_data.get('access_token'))
+            self.parse_token(session_data.get('access_token'))
             self.save_account_data()
             logger.info("Tokens refreshed.")
             return True
@@ -202,30 +204,36 @@ class ItvSession:
         self.save_account_data()
         self._user_id = None
         self._user_nickname = None
+        self._tv_region = None
         return True
 
+    def parse_token(self, token):
+        """Extract user_id, user nickname, region and token expiration time obtained from an access token.
 
-def parse_token(token):
-    """Return user_id, user nickname and token expiration time obtained from an access token.
-
-    Token has other fields which we currently don't parse, like:
-    accountProfileIdInUse
-    auth_time
-    scope
-    nonce
-    iat
-    """
-    import binascii
-    try:
-        token_parts = token.split('.')
-        # Since some padding errors have been observed with refresh tokens, add the maximum just
-        # to be sure padding errors won't occur. a2b_base64 automatically removes excess padding.
-        token_data = binascii.a2b_base64(token_parts[1] + '==')
-        data = json.loads(token_data)
-        return data['sub'], data['name'], data['exp']
-    except (KeyError, AttributeError, IndexError, binascii.Error) as err:
-        logger.error("Failed to parse token: '%r'", err)
-        return None, None, int(time.time()) + time.timezone
+        Token has other fields which we currently don't parse, like:
+        accountProfileIdInUse
+        auth_time
+        scope
+        nonce
+        iat
+        """
+        import binascii
+        from resources.lib import region
+        try:
+            token_parts = token.split('.')
+            # Apply the maximum padding; a2b_base64 ignores excess padding.
+            token_data = binascii.a2b_base64(token_parts[1] + '==')
+            data = json.loads(token_data)
+            self._user_id = data['sub']
+            self._user_nickname = data['name']
+            self._tv_region = region.tv_region(data['region'])
+            self._expire_time = data['exp'] - 1800
+        except (KeyError, AttributeError, IndexError, binascii.Error, json.JSONDecodeError) as err:
+            logger.error("Failed to parse token: '%r'", err)
+            self._user_id = None
+            self._user_nickname = None
+            self._tv_region = None
+            self._expire_time = int(time.time()) + time.timezone
 
 
 def build_cookie(session_data):
@@ -294,6 +302,8 @@ def fetch_authenticated(funct, url, login=True, **kwargs):
                     sys.exit(1)
                 else:
                     raise
+    # Just to silence linters
+    return None
 
 
 def convert_session_data(acc_data: dict) -> dict:

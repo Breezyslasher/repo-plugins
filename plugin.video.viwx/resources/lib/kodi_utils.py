@@ -4,6 +4,7 @@
 #  SPDX-License-Identifier: GPL-2.0-or-later
 #  See LICENSE.txt
 # ----------------------------------------------------------------------------------------------------------------------
+from __future__ import annotations
 import json
 import logging
 
@@ -13,7 +14,7 @@ import xbmcgui
 from codequick import Script, utils
 from codequick.support import addon_data, logger_id
 
-from . utils import addon_info
+from . utils import addon_info, ZoneInfo
 
 logger = logging.getLogger(logger_id + '.kodi_utils')
 
@@ -25,7 +26,6 @@ TXT_MORE_INFO = 30604
 
 TXT_ACCOUNT_ERROR = 30610
 MSG_LOGIN = 30611
-MSG_LOGIN_SUCCESS = 30612
 MSG_LOGGED_OUT_SUCCESS = 30613
 
 TXT_USERNAME = 30614
@@ -39,7 +39,7 @@ BTN_TXT_OK = 30790
 BTN_TXT_CANCEL = 30791
 
 
-def ask_credentials(username: str = None, password: str = None):
+def ask_credentials(username: str | None = None, password: str | None = None):
     """Ask the user to enter his username and password.
     Return a tuple of (username, password). Each or both can be empty when the
     user has canceled the operation.
@@ -68,19 +68,8 @@ def show_msg_not_logged_in():
             Script.localize(MSG_LOGIN),
             nolabel=Script.localize(BTN_TXT_CANCEL),
             yeslabel=Script.localize(TXT_LOGIN_NOW))
-    logger.debug("Dialog 'Open settings to login' result: {}".format('YES' if result else 'NO' ))
+    logger.debug("Dialog 'Open settings to login' result: {}".format('YES' if result else 'NO'))
     return result
-
-
-def show_login_result(success: bool, message: str = None):
-    if success:
-        icon = Script.NOTIFY_INFO
-        if not message:
-            message = Script.localize(MSG_LOGIN_SUCCESS)
-    else:
-        icon = Script.NOTIFY_WARNING
-
-    Script.notify(Script.localize(TXT_ITV_ACCOUNT), message, icon)
 
 
 def ask_login_retry(reason):
@@ -141,12 +130,28 @@ def msg_dlg(msg, title=None, **kwargs):
 
 
 def get_system_setting(setting_id):
-    json_str = '{{"jsonrpc": "2.0", "method": "Settings.GetSettingValue", "params": ["{}"], "id": 1}}'.format(setting_id)
+    json_str = ('{{"jsonrpc": "2.0", "method": "Settings.GetSettingValue", "params": ["{}"], "id": 1}}'.
+                format(setting_id))
     response = xbmc.executeJSONRPC(json_str)
     data = json.loads(response)
     try:
         return data['result']['value']
     except KeyError:
-        msg  = data.get('message') or "Failed to get setting"
+        msg = data.get('message') or "Failed to get setting"
         logger.error("get_system_setting failed for setting_id '%s': '%s'", setting_id, msg)
         raise ValueError('system setting error: {}'.format(msg))
+
+
+_local_timezone = None
+
+
+def local_timezone() -> ZoneInfo:
+    global _local_timezone
+    if not _local_timezone:
+        try:
+            _local_timezone = ZoneInfo(get_system_setting('locale.timezone'))
+        except ValueError:
+            # To be Matrix compatible
+            from tzlocal import get_localzone
+            _local_timezone = get_localzone()
+    return _local_timezone

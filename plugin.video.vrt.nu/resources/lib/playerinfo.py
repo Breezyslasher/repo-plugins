@@ -2,14 +2,13 @@
 # GNU General Public License v3.0 (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 """Implementation of PlayerInfo class"""
 
-from __future__ import absolute_import, division, unicode_literals
 from threading import Event, Thread
 from xbmc import getInfoLabel, Player, PlayList
 
 from api import get_next_info, get_resumepoint_data, set_resumepoint
 from data import CHANNELS
 from kodiutils import addon_id, get_setting_bool, has_addon, jsonrpc, kodi_version_major, log, log_error, notify, set_property, url_for
-from utils import play_url_to_id, to_unicode
+from utils import play_url_to_id
 
 
 class PlayerInfo(Player, object):  # pylint: disable=useless-object-inheritance
@@ -73,7 +72,8 @@ class PlayerInfo(Player, object):  # pylint: disable=useless-object-inheritance
                 return
 
         # Get resumepoint data
-        self.video_id, self.resumepoint_title = get_resumepoint_data(episode_id=self.path.split('/')[-1])
+        from base64 import b64decode
+        self.video_id, self.resumepoint_title = get_resumepoint_data(episode_id=b64decode(self.path.split('/')[-1].encode('utf-8')).decode('utf-8'))
 
         # Kodi 17 doesn't have onAVStarted
         if kodi_version_major() < 18:
@@ -185,12 +185,11 @@ class PlayerInfo(Player, object):  # pylint: disable=useless-object-inheritance
     def push_upnext(self):
         """Push episode info to Up Next service add-on"""
         if has_addon('service.upnext') and get_setting_bool('useupnext', default=True) and self.isPlaying():
-
-            next_info = get_next_info(episode_id=self.path.split('/')[-1])
+            from base64 import b64decode, b64encode
+            next_info = get_next_info(episode_id=b64decode(self.path.split('/')[-1].encode('utf-8')).decode('utf-8'))
             if next_info:
-                from base64 import b64encode
                 from json import dumps
-                data = [to_unicode(b64encode(dumps(next_info).encode()))]
+                data = [b64encode(dumps(next_info).encode('utf-8')).decode('utf-8')]
                 sender = '{addon_id}.SIGNAL'.format(addon_id=addon_id())
                 notify(sender=sender, message='upnext_data', data=data)
 
@@ -219,10 +218,7 @@ class PlayerInfo(Player, object):  # pylint: disable=useless-object-inheritance
         """
         playing_file = self.getPlayingFile()
         if any(param in playing_file for param in ('?t=', '&t=')):
-            try:  # Python 3
-                from urllib.parse import parse_qs, urlsplit
-            except ImportError:  # Python 2
-                from urlparse import parse_qs, urlsplit
+            from urllib.parse import parse_qs, urlsplit
             import re
             # Detect single start timestamp
             timestamp = parse_qs(urlsplit(playing_file).query).get('t')[0]

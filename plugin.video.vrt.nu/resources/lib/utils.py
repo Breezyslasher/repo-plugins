@@ -2,17 +2,10 @@
 # GNU General Public License v3.0 (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 """Implements static functions used elsewhere in the add-on"""
 
-from __future__ import absolute_import, division, unicode_literals
 import re
 
-try:  # Python 3
-    from html import unescape
-except ImportError:  # Python 2
-    from HTMLParser import HTMLParser
-
-    def unescape(string):
-        """Expose HTMLParser's unescape"""
-        return HTMLParser().unescape(string)
+from html import unescape
+from datetime import timedelta
 
 HTML_MAPPING = [
     (re.compile(r'<(/?)i(|\s[^>]+)>', re.I), '[\\1I]'),
@@ -28,20 +21,31 @@ HTML_MAPPING = [
     (re.compile('(&nbsp;\n){2,}', re.I), '\n'),  # Remove repeating non-blocking spaced newlines
 ]
 
+ISO_DURATION = re.compile(
+    r'^P'                                     # starts with P
+    r'(?:(?P<days>\d+(?:\.\d+)?)D)?'          # days (with optional decimals)
+    r'(?:T'                                   # time part
+    r'(?:(?P<hours>\d+(?:\.\d+)?)H)?'         # hours
+    r'(?:(?P<minutes>\d+(?:\.\d+)?)M)?'       # minutes
+    r'(?:(?P<seconds>\d+(?:\.\d+)?)S)?'       # seconds
+    r')?$'
+)
 
-def to_unicode(text, encoding='utf-8', errors='strict'):
-    """Force text to unicode"""
-    if isinstance(text, bytes):
-        return text.decode(encoding, errors=errors)
-    return text
 
-
-def from_unicode(text, encoding='utf-8', errors='strict'):
-    """Force unicode to text"""
-    import sys
-    if sys.version_info.major == 2 and isinstance(text, unicode):  # noqa: F821; pylint: disable=undefined-variable
-        return text.encode(encoding, errors)
-    return text
+def parse_duration(s: str) -> timedelta:
+    """
+    Parse an ISO 8601 duration string (days, hours, minutes, seconds)
+    into a datetime.timedelta. Supports fractional values.
+    Does not support months or years.
+    """
+    match = ISO_DURATION.match(s)
+    if not match:
+        raise ValueError(f"Invalid ISO 8601 duration: {s}")
+    parts = {k: float(v) if v else 0.0 for k, v in match.groupdict().items()}
+    return timedelta(days=parts['days'],
+                     hours=parts['hours'],
+                     minutes=parts['minutes'],
+                     seconds=parts['seconds'])
 
 
 def capitalize(string):
