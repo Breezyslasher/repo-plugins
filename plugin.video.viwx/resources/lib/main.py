@@ -2,7 +2,7 @@
 #  Copyright (c) 2022-2025 Dimitri Kroon.
 #  This file is part of plugin.video.viwx.
 #  SPDX-License-Identifier: GPL-2.0-or-later
-#  See LICENSE.txt
+#  See LICENSE.txt or https://www.gnu.org/licenses/gpl-2.0.txt
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
@@ -330,7 +330,7 @@ def list_collections(_):
         if item:
             yield Listitem.from_dict(list_collection_content, **item['show'])
 
-    for slider in main_page['editorialSliders'].values():
+    for slider in main_page['editorialSliders']:
         item = parsex.parse_editorial_slider(url, slider)
         if item:
             yield Listitem.from_dict(list_collection_content, **item['show'])
