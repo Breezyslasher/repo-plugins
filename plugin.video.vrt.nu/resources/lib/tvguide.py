@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import dateutil.parser
 import dateutil.tz
 
-from api import get_episodes, get_entities
+from api import get_epg_episodes, get_epg_list
 from data import CHANNELS, RELATIVE_DATES
 from helperobjects import TitleItem
 from kodiutils import (colour, get_cached_url_json, has_addon, localize,
@@ -23,7 +23,7 @@ class TVGuide:
     def __init__(self):
         """Initializes TV-guide object"""
 
-    def show_tvguide(self, date=None, channel=None, end_cursor=''):
+    def show_tvguide(self, date=None, channel=None, end_cursor=None):
         """Offer a menu depending on the information provided"""
 
         if not date and not channel:
@@ -57,7 +57,7 @@ class TVGuide:
         if epg.hour < 6:
             epg += timedelta(days=-1)
         date_items = []
-        for offset in range(14, -19, -1):
+        for offset in range(7, -8, -1):
             day = epg + timedelta(days=offset)
             label = localize_datelong(day)
             date = day.strftime('%Y-%m-%d')
@@ -121,7 +121,7 @@ class TVGuide:
 
             if date:
                 label = chan.get('label')
-                path = url_for('tvguide', date=date, channel=chan.get('name'))
+                path = url_for('tvguide', date=date, channel=chan.get('name'), end_cursor='1')
                 plot = '[B]%s[/B]\n%s' % (datelong, localize(30302, **chan))
             else:
                 label = '[B]%s[/B]' % localize(30303, **chan)
@@ -142,15 +142,11 @@ class TVGuide:
             ))
         return channel_items
 
-    def get_episode_items(self, date, channel, end_cursor=''):
+    def get_episode_items(self, date, channel, end_cursor=None):
         """Show episodes for a given date and channel"""
         now = datetime.now(dateutil.tz.tzlocal())
         epg_date = self.parse(date, now)
-
-        entry = find_entry(CHANNELS, 'name', channel)
-
-        list_id = 'virtual:epg:{}:{}'.format(entry.get('id'), epg_date.strftime('%Y-%m-%d'))
-        episode_items, _, _, _ = get_episodes(list_id, 'tvguide', end_cursor=end_cursor, date=date, channel=channel)
+        episode_items = get_epg_episodes(date=epg_date.strftime('%Y-%m-%d'), channel=channel, page=end_cursor)
         return episode_items
 
     def get_epg_data(self):
@@ -171,31 +167,33 @@ class TVGuide:
                 epg_id = channel.get('epg_id')
                 epg_data.setdefault(epg_id, [])
 
-                list_id = f'virtual:epg:{channel["id"]}:{epg_date.strftime("%Y-%m-%d")}'
-                data = get_entities(list_id, page_size=100)
-                edges = (
-                    data.get('data', {})
-                    .get('list', {})
-                    .get('paginatedItems', {})
-                    .get('edges', [])
-                )
+                data, _ = get_epg_list(channel.get('name'), epg_date.strftime('%Y-%m-%d'))
 
                 previous_stop_dt = None
-                for item in edges:
-                    node = item.get('node', {})
+                for item in data:
+                    node = item.get('node', {}) or item
                     stream = None
                     ep_code = None
 
                     # Decode start datetime
-                    comp_id = node.get('componentId', '').lstrip('#')
-                    decoded = b64decode(comp_id.encode('utf-8')).decode('utf-8')
-                    start_str = decoded.split('#1')[2].split('|')[0]
+                    if node.get('tileType') == 'livestream':
+                        start_str = node.get('livestream').get('startDateTime')
+                    else:
+                        comp_id = node.get('componentId', '').lstrip('#')
+                        decoded = b64decode(comp_id.encode('utf-8')).decode('utf-8')
+                        start_str = decoded.split('#1')[2].split('|')[0]
+
                     start_dt = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
 
-                    episode = node.get('episode')
+                    if node.get('livestream'):
+                        episode = node.get('livestream').get('episode')
+                    else:
+                        episode = node.get('episode')
                     duration = None
 
-                    if episode and (dur_raw := episode.get('durationRaw')):
+                    if node.get('progress'):
+                        duration = timedelta(seconds=node.get('progress').get('durationInSeconds'))
+                    elif episode and (dur_raw := episode.get('durationRaw')):
                         duration = parse_duration(dur_raw)
 
                     if duration == timedelta(0) and node.get('statusMeta'):
