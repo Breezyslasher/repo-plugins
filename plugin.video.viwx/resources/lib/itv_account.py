@@ -2,7 +2,7 @@
 #  Copyright (c) 2022-2025 Dimitri Kroon.
 #  This file is part of plugin.video.viwx.
 #  SPDX-License-Identifier: GPL-2.0-or-later
-#  See LICENSE.txt
+#  See LICENSE.txt or https://www.gnu.org/licenses/gpl-2.0.txt
 # ----------------------------------------------------------------------------------------------------------------------
 import sys
 import time
@@ -177,8 +177,11 @@ class ItvSession:
             resp = fetch.get_json(
                 'https://auth.prd.user.itv.com/token',
                 params={'refresh': token},
-                headers={'Accept': 'application/vnd.user.auth.v2+json'},
-                timeout=10
+                headers={'Accept': 'application/vnd.user.auth.v2+json',
+                         'origin': 'https://app.10ft.itv.com',
+                         'referer': 'https://app.10ft.itv.com/',
+                         },
+                timeout=fetch.WEB_TIMEOUT
             )
             new_tokens = resp
             session_data = self.account_data['itv_session']
