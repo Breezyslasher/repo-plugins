@@ -141,6 +141,18 @@ class Channel:
         return
 
     @property
+    def search_profile_id(self) -> Optional[str]:
+        """Return the active profile ID for profile-scoped search history.
+
+        Channels that support user profiles should override this to return
+        the active profile ID.  When set, SearchAction stores search history
+        per profile instead of per channel.
+
+        :return: The active profile ID, or None if profiles are not supported.
+        """
+        return None
+
+    @property
     def search_url(self) -> str:
         if self.channelCode:
             return (f"plugin://{Config.addonId}/?{keyword.CHANNEL}={self.url_id}"
@@ -201,6 +213,15 @@ class Channel:
         if [p for p in data_parsers if p.LogOnRequired]:
             Logger.info("One or more dataparsers require logging in.")
             self.loggedOn = self.log_on()
+            if not self.loggedOn:
+                Logger.warning("Could not log on for: %s", self)
+                title = LanguageHelper.get_localized_string(LanguageHelper.LoginErrorTitle)
+                text = LanguageHelper.get_localized_string(LanguageHelper.LoginErrorText)
+                XbmcWrapper.show_notification(
+                    title, text, display_time=2000,
+                    notification_type=XbmcWrapper.Error,
+                    logger=Logger.instance())
+                return None
 
         # now set the headers here and not earlier in case they might have been update by the logon
         if parent_item is not None and parent_item.HttpHeaders:
@@ -890,9 +911,9 @@ class Channel:
         :rtype: list
         """
         return []
-    
+
     def create_iptv_epg(self, parameter_parser):
-        """ Fallback function if not implemented. 
+        """ Fallback function if not implemented.
         Fetch the EPG using the EPG endpoint and format it into JSON-EPG
 
         :param ActionParser parameter_parser: a ActionParser object to is used to parse and

@@ -87,7 +87,7 @@ class Channel(chn_class.Channel):
         # If the user was logged in, we need to refresh the token otherwise it will result in 403
         self._add_data_parsers([
             "https://npo.nl/start/api/domain/page-collection?collectionId=",
-            "https://npo.nl/start/api/domain/page-collection?type=series&collectionId=",
+            "https://npo.nl/start/api/domain/page-collection?collectionType=SERIES&collectionId=",
             "https://npo.nl/start/api/domain/search-collection-items?searchType=series"],
             name="Collections with series", json=True,
             requires_logon=bool(self.__user_name),
@@ -104,7 +104,7 @@ class Channel(chn_class.Channel):
         # If the user was logged in, we need to refresh the token otherwise it will result in 403
         self._add_data_parsers([
             "https://npo.nl/start/api/domain/search-collection-items?searchType=broadcasts",
-            "https://npo.nl/start/api/domain/page-collection?type=program&collectionId="
+            "https://npo.nl/start/api/domain/page-collection?collectionType=PROGRAM&collectionId="
         ],
             name="Collections with videos", json=True,
             requires_logon=bool(self.__user_name),
@@ -151,9 +151,12 @@ class Channel(chn_class.Channel):
                               name="Bare pages layout", json=True,
                               parser=["collections"], creator=self.create_api_page_layout)
 
-        self._add_data_parser("https://npo.nl/start/api/domain/page-collection?type=dynamic_page&collectionId=",
-                              name="Categories layout", json=True,
-                              parser=["items"], creator=self.create_api_category_item)
+        self._add_data_parsers([
+            "https://npo.nl/start/api/domain/page-collection?collectionType=PAGE&collectionId=",
+            # Not quite sure if dynamic_page still exists, but kept in just in case it does.
+            "https://npo.nl/start/api/domain/page-collection?collectionType=DYNAMIC_PAGE&collectionId="],
+            name="Categories layout", json=True,
+            parser=["items"], creator=self.create_api_category_item)
 
         # Favourites (not yet implemented in the site).
         self._add_data_parser("https://npo.nl/start/api/domain/user-profiles",
@@ -174,8 +177,9 @@ class Channel(chn_class.Channel):
         # OLD but still working?
         # live radio, the folders and items
         self._add_data_parser(
-            "https://www.npoluister.nl/", name="Live Radio Streams",
-            parser=Regexer.from_expresso('<li><a[^>]+href="(?<url>https:[^"]+)"[^>]*>(?<title>[^<]+)'),
+            "https://npo.nl/luister", name="Live Radio Streams",
+            parser=Regexer.from_expresso(
+                "<li[^>]+><a[^>]+aria-label=\"[^\"]+ van (?<title>[^\"]+)\" [^>]+href=\"(?<url>https:[^\"]+)\"[^>]*>"),
             creator=self.create_live_radio
         )
         self._add_data_parser(
@@ -429,11 +433,12 @@ class Channel(chn_class.Channel):
         #         content_type=contenttype.TVSHOWS)
 
         add_item(LanguageHelper.TvShows,
-                 "https://npo.nl/start/api/domain/page-layout?layoutId=programmas&layoutType=PAGE",
+                 "https://npo.nl/start/api/domain/page-layout?layoutId=programmas&layoutType=PAGE&includePremiumContent={}&partyId=1".format(
+                     'false' if AddonSettings.hide_premium_items() else 'true'),
                  content_type=contenttype.TVSHOWS)
 
         live_radio = add_item(
-            LanguageHelper.LiveRadio, "https://www.npoluister.nl/",
+            LanguageHelper.LiveRadio, "https://npo.nl/luister",
             content_type=contenttype.SONGS, headers=self.__jsonApiKeyHeader)
         live_radio.isLive = True
 
@@ -653,8 +658,9 @@ class Channel(chn_class.Channel):
         else:
             guid = result_set["collectionId"]
         page_type = result_set["type"]
-        url = f"https://npo.nl/start/api/domain/page-collection?type={page_type.lower()}&collectionId={guid}&partyId=1&layoutType=PAGE"
-
+        include_premium = 'false' if AddonSettings.hide_premium_items() else 'true'
+        url = (f"https://npo.nl/start/api/domain/page-collection?collectionType={page_type}"
+               f"&collectionId={guid}&partyId=1&layoutType=PAGE&includePremiumContent={include_premium}")
         info = UriHandler.open(url)
         info = JsonHelper(info)
         title = info.get_value("title")
@@ -665,7 +671,7 @@ class Channel(chn_class.Channel):
             content_type = contenttype.TVSHOWS
         elif page_type == "PROGRAM":
             content_type = contenttype.EPISODES
-        elif page_type == "DYNAMIC_PAGE":
+        elif page_type in ("DYNAMIC_PAGE", "PAGE"):
             content_type = contenttype.VIDEOS
         else:
             Logger.error(f"Missing for page type: {page_type}")
@@ -1333,20 +1339,24 @@ class Channel(chn_class.Channel):
             "NPO2 Extra": TextureHandler.instance().get_texture_uri(self, "npo2extra.png"),
             "NPO Politiek en Nieuws": TextureHandler.instance().get_texture_uri(self, "npopolitiekennieuws.png")
         }
-        
+
         for livestream in channel_data.json:
+            item_name = JsonHelper.get_from(livestream, "title")
+            if item_name not in logo_sources:
+                continue
+
             item = self.create_api_live_tv(livestream)
             items.append(item)
 
             iptv_streams.append(dict(
                 id=JsonHelper.get_from(livestream, "guid"),
-                name=JsonHelper.get_from(livestream, "title"),
-                logo=logo_sources[JsonHelper.get_from(livestream, "title")],
+                name=item_name,
+                logo=logo_sources[item_name],
                 group=self.channelName,
                 stream=parameter_parser.create_action_url(self, action=action.PLAY_VIDEO, item=item,
                                                           store_id=parent_item.guid),
             ))
-        
+
         parameter_parser.pickler.store_media_items(parent_item.guid, parent_item, items)
         return iptv_streams
 
@@ -1364,10 +1374,10 @@ class Channel(chn_class.Channel):
         parent = MediaItem("EPG", "https://start-api.npo.nl/epg/", media_type=mediatype.FOLDER)
         iptv_epg = dict()
         media_items = []
-        
+
         for livestream in channel_data.json:
             iptv_epg[livestream["guid"]] = []
-            
+
             # Fetch 3 days in the past and in the future
             start = datetime.datetime.now() - datetime.timedelta(days=3)
             for i in range(0, 6, 1):
@@ -1375,7 +1385,7 @@ class Channel(chn_class.Channel):
                 date = air_date.strftime("%d-%m-%Y")
                 guid = livestream["guid"]
                 guide_data = JsonHelper(UriHandler.open(f"https://npo.nl/start/api/domain/guide-channel?guid={guid}&date={date}"))
-        
+
                 for item in guide_data.json:
                     item["channel"] = livestream["title"]
                     media_item = self.create_api_epg_item(item)
@@ -1383,9 +1393,17 @@ class Channel(chn_class.Channel):
                         start=datetime.datetime.fromtimestamp(JsonHelper.get_from(item, "programStart"), datetime.timezone.utc).isoformat(),
                         stop=datetime.datetime.fromtimestamp(JsonHelper.get_from(item, "programEnd"), datetime.timezone.utc).isoformat(),
                         title=JsonHelper.get_from(item, "mainTitle"))
-                    
+
                     if len(JsonHelper.get_from(item, "images")) > 0:
                         iptv_epg_item["image"] = JsonHelper.get_from(item, "images")[0].get("url")
+
+                    genres = item.get("genres") or []
+                    if genres:
+                        iptv_epg_item["genre"] = genres[0].get("name", "")
+                    if item.get("synopsis"):
+                        iptv_epg_item["description"] = item["synopsis"]
+                    if item.get("episodeTitle"):
+                        iptv_epg_item["subtitle"] = item["episodeTitle"]
 
                     if media_item is not None:
                         iptv_epg_item["stream"] = parameter_parser.create_action_url(
