@@ -2,21 +2,19 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Retrospect Add-on\n"
-"Report-Msgid-Bugs-To: translations@kodi.tv\n"
+"Report-Msgid-Bugs-To: https://github.com/retrospect-addon/plugin.video.retrospect/issues\n"
 "POT-Creation-Date: YEAR-MO-DA HO:MI+ZONE\n"
-"PO-Revision-Date: 2026-01-20 03:13+0000\n"
-"Last-Translator: wabisabi926 <liwenliang926@163.com>\n"
-"Language-Team: Chinese (Simplified Han script) <https://kodi.weblate.cloud/projects/kodi-add-ons-video/plugin-video-retrospect/zh_Hans/>\n"
-"Language: zh_cn\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: Automatically generated\n"
+"Language: fa_AF\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Weblate 5.15.2\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
 
 msgctxt "Addon Summary"
 msgid "Retrospect allows you to watch re-runs/catch-ups of TV shows made available via their official broadcasters."
-msgstr "通过 Retrospect，您可以观看由官方广播公司提供的电视剧重播/补播。"
+msgstr ""
 
 msgctxt "Addon Description"
 msgid "Retrospect uses the official websites and freely available streams of different broadcasting companies (mainly Dutch, Belgian, British, Norwegian and Swedish) to make their re-run/catch-up episodes available on the Kodi platform. [CR][CR]Some channels that are included are: NPO Start, Kijk.nl (SBS6, NET5, Veronica, SBS9), RTL XL, NOS, Nickelodeon, AT5, Omroep Flevoland, L1, RTV Drenthe, RTV Oost, RTV Noord, RTV Noord-Holland, RTV Rijnmond, Omroep West, Omroep Gelderland, Omroep Brabant, Omrop Fryslân, WOS, DTV, Omroep Venlo Omroep Horst aan de Maas, Studio 040, RTV Utrecht, Omroep Zeeland, Eén, Vier, VRT.nu, VTM, Stieve, Ketnet, DPlay, SVT, ViaFree, Viasat, UR Play, MTV, NRK, BBC, Dumpert, Fox Sports, Pathé Nederland, Hardware.info and Ons.[CR][CR]More information can be found at https://github.com/retrospect-addon/plugin.video.retrospect or the Retrospect wiki at https://github.com/retrospect-addon/plugin.video.retrospect/wiki/."
@@ -36,7 +34,7 @@ msgstr ""
 
 msgctxt "#30002"
 msgid "Medium"
-msgstr "中"
+msgstr ""
 
 msgctxt "#30003"
 msgid "High"
@@ -64,11 +62,11 @@ msgstr ""
 
 msgctxt "#30009"
 msgid "General"
-msgstr "常规"
+msgstr ""
 
 msgctxt "#30010"
 msgid "Channels"
-msgstr "频道"
+msgstr ""
 
 msgctxt "#30011"
 msgid "Requires restart of Retrospect to take effect."
@@ -82,6 +80,7 @@ msgctxt "#30013"
 msgid "Could not log on to the selected channel."
 msgstr ""
 
+# empty strings from id 30014 to 30014
 msgctxt "#30015"
 msgid "via missing add-on"
 msgstr ""
@@ -124,7 +123,7 @@ msgstr ""
 
 msgctxt "#30025"
 msgid "None"
-msgstr "无"
+msgstr ""
 
 msgctxt "#30026"
 msgid "Group list if it exceeds # folders"
@@ -144,7 +143,7 @@ msgstr ""
 
 msgctxt "#30030"
 msgid "Port"
-msgstr "端口"
+msgstr ""
 
 msgctxt "#30031"
 msgid "Cache HTTP(S) requests"
@@ -164,11 +163,11 @@ msgstr ""
 
 msgctxt "#30035"
 msgid "Username"
-msgstr "账号"
+msgstr ""
 
 msgctxt "#30036"
 msgid "Password"
-msgstr "密码"
+msgstr ""
 
 msgctxt "#30037"
 msgid "Use 'Up Next' to play next episode"
@@ -184,7 +183,7 @@ msgstr ""
 
 msgctxt "#30040"
 msgid "Channels"
-msgstr "频道"
+msgstr ""
 
 msgctxt "#30041"
 msgid "Show \"All Favourites\" in main Channel listing"
@@ -192,7 +191,7 @@ msgstr ""
 
 msgctxt "#30042"
 msgid "Enabled"
-msgstr "已启用"
+msgstr ""
 
 msgctxt "#30043"
 msgid "Folder prefix"
@@ -203,7 +202,10 @@ msgid "Kodi update required"
 msgstr ""
 
 msgctxt "#30045"
-msgid "This feature of Retrospect requires a more recent version of Kodi. Please install the most recent version of your current Kodi build. Depending on your installation this can either be a 'stable' or 'nightly' build."
+msgid ""
+"This feature of Retrospect requires a more recent version of Kodi. Please install the most "
+"recent version of your current Kodi build. Depending on your installation this can either be "
+"a 'stable' or 'nightly' build."
 msgstr ""
 
 msgctxt "#30046"
@@ -214,7 +216,6 @@ msgctxt "#30047"
 msgid "Cannot playback this YouTube Video because the Kodi YouTube add-on is missing."
 msgstr ""
 
-# empty string with id 30047
 msgctxt "#30048"
 msgid "Log level"
 msgstr ""
@@ -240,12 +241,27 @@ msgid "Appearance"
 msgstr ""
 
 msgctxt "#30054"
-msgid "[COLOR gold][B]The Retrospect Password Vault[/B][/COLOR][CR]'The Vault' enables storing sensitive data in a more secure way. How does this work:[CR][CR]* The users selects a simple Vault PIN that is used as the main code for accessing the Vault data.[CR]* This PIN can be rather simple and short and easy to remember: for example 3145.[CR]* That PIN is then used to generate a much stronger and complexer encryption key using Scrypt.[CR]* As a user you will not need to know this complex key.[CR][CR][COLOR gold][B]Storing sensitive data[/B][/COLOR][CR]Whenever sensitive data is being [B]stored[/B]:[CR][CR]* The user will be asked for their PIN first.[CR]* After a correct PIN the actual data to store will be asked.[CR][CR][COLOR gold][B]Retrieving sensitive data[/B][/COLOR][CR]Whenever sensitive data is being [B]retrieved[/B]:[CR][CR]* The user will only be asked for their PIN.[CR]* That PIN is then used to securely fetch the actual data.[CR][CR][COLOR gold][B]Resetting the Vault[/B][/COLOR][CR]If a user has forgotten the PIN, there is no way of recovering the data. The only solution is to reset the Vault and pick a new PIN and generate a new Vault Key. [B]This will invalidate all encrypted data[/B]. This data must be entered again."
+msgid "[COLOR gold][B]The Retrospect Password Vault[/B][/COLOR][CR]"
+"'The Vault' enables storing sensitive data in a more secure way. How does this work:[CR][CR]"
+"* The users selects a simple Vault PIN that is used as the main code for accessing the Vault data.[CR]"
+"* This PIN can be rather simple and short and easy to remember: for example 3145.[CR]"
+"* That PIN is then used to generate a much stronger and complexer encryption key using Scrypt.[CR]"
+"* As a user you will not need to know this complex key.[CR][CR]"
+"[COLOR gold][B]Storing sensitive data[/B][/COLOR][CR]"
+"Whenever sensitive data is being [B]stored[/B]:[CR][CR]"
+"* The user will be asked for their PIN first.[CR]"
+"* After a correct PIN the actual data to store will be asked.[CR][CR]"
+"[COLOR gold][B]Retrieving sensitive data[/B][/COLOR][CR]"
+"Whenever sensitive data is being [B]retrieved[/B]:[CR][CR]"
+"* The user will only be asked for their PIN.[CR]"
+"* That PIN is then used to securely fetch the actual data.[CR][CR]"
+"[COLOR gold][B]Resetting the Vault[/B][/COLOR][CR]"
+"If a user has forgotten the PIN, there is no way of recovering the data. The only solution is to reset the Vault and pick a new PIN and generate a new Vault Key. [B]This will invalidate all encrypted data[/B]. This data must be entered again."
 msgstr ""
 
 msgctxt "#30055"
 msgid "Advanced"
-msgstr "高级"
+msgstr ""
 
 msgctxt "#30056"
 msgid "Install the Up Next add-on"
@@ -255,7 +271,7 @@ msgctxt "#30057"
 msgid "Enable the Up Next add-on"
 msgstr ""
 
-# empty strings from id 30056 to 30058
+# empty strings id 30058
 msgctxt "#30059"
 msgid "Other Countries"
 msgstr ""
@@ -298,7 +314,7 @@ msgstr ""
 
 msgctxt "#30069"
 msgid "Settings"
-msgstr "设置"
+msgstr ""
 
 msgctxt "#30070"
 msgid "Let Kodi determine bitrate if possible"
@@ -394,11 +410,11 @@ msgstr ""
 
 msgctxt "#30093"
 msgid "Password"
-msgstr "密码"
+msgstr ""
 
 msgctxt "#30094"
 msgid "Username"
-msgstr "账号"
+msgstr ""
 
 msgctxt "#30095"
 msgid "Show Hidden Items"
@@ -422,7 +438,7 @@ msgstr ""
 
 msgctxt "#30100"
 msgid "None"
-msgstr "无"
+msgstr ""
 
 msgctxt "#30101"
 msgid "Regional"
@@ -454,7 +470,7 @@ msgstr ""
 
 msgctxt "#30108"
 msgid "Other"
-msgstr "其他"
+msgstr ""
 
 msgctxt "#30109"
 msgid "IPTV Manager"
@@ -540,8 +556,7 @@ msgctxt "#30129"
 msgid "Re-Authenticate"
 msgstr ""
 
-# used for list limits
-# empty strings from id 30109 to 30189
+# empty strings from id 30130 to 30189
 msgctxt "#30190"
 msgid "Monday"
 msgstr ""
@@ -666,10 +681,9 @@ msgctxt "#30349"
 msgid "Later"
 msgstr ""
 
-# empty strings from id 30312 to 30349
 msgctxt "#30350"
 msgid "Search"
-msgstr "搜索"
+msgstr ""
 
 msgctxt "#30351"
 msgid "Categories"
@@ -677,7 +691,7 @@ msgstr ""
 
 msgctxt "#30352"
 msgid "TV shows"
-msgstr "电视剧"
+msgstr ""
 
 msgctxt "#30353"
 msgid "Currently playing"
@@ -701,7 +715,7 @@ msgstr ""
 
 msgctxt "#30358"
 msgid "Episodes"
-msgstr "剧集"
+msgstr ""
 
 msgctxt "#30359"
 msgid "Genres"
@@ -721,7 +735,7 @@ msgstr ""
 
 msgctxt "#30363"
 msgid "Popular"
-msgstr "流行的"
+msgstr ""
 
 msgctxt "#30364"
 msgid "Latest news"
@@ -729,7 +743,7 @@ msgstr ""
 
 msgctxt "#30365"
 msgid "Movies"
-msgstr "电影"
+msgstr ""
 
 msgctxt "#30366"
 msgid "Available from"
@@ -765,7 +779,7 @@ msgstr ""
 
 msgctxt "#30374"
 msgid "Recommended TV Shows"
-msgstr "推荐电视剧"
+msgstr ""
 
 msgctxt "#30375"
 msgid "Recommended Videos"
@@ -783,7 +797,7 @@ msgctxt "#30378"
 msgid "Remove Item"
 msgstr ""
 
-# empty strings from id 30365 to 30400
+# empty strings from id 30379 to 30400
 msgctxt "#30401"
 msgid "Dutch"
 msgstr ""
@@ -853,7 +867,7 @@ msgstr ""
 
 msgctxt "#30502"
 msgid "Favourites"
-msgstr "收藏夹"
+msgstr ""
 
 msgctxt "#30503"
 msgid "Channel Favourites"
@@ -899,7 +913,7 @@ msgctxt "#30513"
 msgid "Profiles"
 msgstr ""
 
-# empty strings from id 30511 to 30515
+# empty strings from id 30514 to 30515
 msgctxt "#30516"
 msgid "New Version Available."
 msgstr ""
@@ -923,7 +937,7 @@ msgstr ""
 
 msgctxt "#30523"
 msgid "Error"
-msgstr "错误"
+msgstr ""
 
 msgctxt "#30524"
 msgid "No videos were found for the selected item."
@@ -972,7 +986,7 @@ msgstr ""
 
 msgctxt "#30537"
 msgid "Page"
-msgstr "页"
+msgstr ""
 
 msgctxt "#30538"
 msgid "The selected live stream has not yet|begun."
@@ -1016,7 +1030,7 @@ msgstr ""
 
 msgctxt "#30548"
 msgid "Clips"
-msgstr "剪辑"
+msgstr ""
 
 msgctxt "#30549"
 msgid "Error retrieving the list of items."
@@ -1152,7 +1166,7 @@ msgstr ""
 
 msgctxt "#30582"
 msgid "Split TV shows and single episodes in separate folders"
-msgstr "将电视剧与单集分放至不同文件夹"
+msgstr ""
 
 msgctxt "#30583"
 msgid "Single episodes"
@@ -1178,7 +1192,7 @@ msgctxt "#30588"
 msgid "This stream cannot be played due to geographical restrictions."
 msgstr ""
 
-# empty strings from id 30584 to 30589
+# empty strings from id 30589 to 30589
 msgctxt "#30590"
 msgid "Set a new Retrospect PIN"
 msgstr ""
@@ -1257,4 +1271,4 @@ msgstr ""
 
 msgctxt "#30609"
 msgid "Error"
-msgstr "错误"
+msgstr ""
